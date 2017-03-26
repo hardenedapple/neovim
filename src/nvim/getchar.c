@@ -2235,65 +2235,67 @@ static int vgetorpeek(const int advance)
          * input from the user), show the partially matched characters
          * to the user with showcmd.
          */
-        int showcmd_len = 0;
-        int c1 = 0;
-        if (typebuf.tb_len > 0 && advance && !exmode_active) {
-          if (((State & (NORMAL | INSERT)) || State == LANGMAP)
-              && State != HITRETURN) {
-            /* this looks nice when typing a dead character map */
-            if (State & INSERT
-                && ptr2cells(typebuf.tb_buf + typebuf.tb_off
+        { // Using the showcmd_len and c1 variables
+          int showcmd_len = 0;
+          int c1 = 0;
+          if (typebuf.tb_len > 0 && advance && !exmode_active) {
+            if (((State & (NORMAL | INSERT)) || State == LANGMAP)
+                && State != HITRETURN) {
+              /* this looks nice when typing a dead character map */
+              if (State & INSERT
+                  && ptr2cells(typebuf.tb_buf + typebuf.tb_off
                     + typebuf.tb_len - 1) == 1) {
-              edit_putchar(typebuf.tb_buf[typebuf.tb_off
-                                          + typebuf.tb_len - 1], FALSE);
-              setcursor();               /* put cursor back where it belongs */
+                edit_putchar(typebuf.tb_buf[typebuf.tb_off
+                    + typebuf.tb_len - 1], FALSE);
+                setcursor();               /* put cursor back where it belongs */
+                c1 = 1;
+              }
+              /* need to use the col and row from above here */
+              old_wcol = curwin->w_wcol;
+              old_wrow = curwin->w_wrow;
+              curwin->w_wcol = new_wcol;
+              curwin->w_wrow = new_wrow;
+              push_showcmd();
+              if (typebuf.tb_len > SHOWCMD_COLS)
+                showcmd_len = typebuf.tb_len - SHOWCMD_COLS;
+              while (showcmd_len < typebuf.tb_len)
+                (void)add_to_showcmd(typebuf.tb_buf[typebuf.tb_off
+                    + showcmd_len++]);
+              curwin->w_wcol = old_wcol;
+              curwin->w_wrow = old_wrow;
+            }
+
+            /* this looks nice when typing a dead character map */
+            if ((State & CMDLINE)
+                && cmdline_star == 0
+                && ptr2cells(typebuf.tb_buf + typebuf.tb_off
+                  + typebuf.tb_len - 1) == 1) {
+              putcmdline(typebuf.tb_buf[typebuf.tb_off
+                  + typebuf.tb_len - 1], FALSE);
               c1 = 1;
             }
-            /* need to use the col and row from above here */
-            old_wcol = curwin->w_wcol;
-            old_wrow = curwin->w_wrow;
-            curwin->w_wcol = new_wcol;
-            curwin->w_wrow = new_wrow;
-            push_showcmd();
-            if (typebuf.tb_len > SHOWCMD_COLS)
-              showcmd_len = typebuf.tb_len - SHOWCMD_COLS;
-            while (showcmd_len < typebuf.tb_len)
-              (void)add_to_showcmd(typebuf.tb_buf[typebuf.tb_off
-                                                  + showcmd_len++]);
-            curwin->w_wcol = old_wcol;
-            curwin->w_wrow = old_wrow;
           }
 
-          /* this looks nice when typing a dead character map */
-          if ((State & CMDLINE)
-              && cmdline_star == 0
-              && ptr2cells(typebuf.tb_buf + typebuf.tb_off
-                  + typebuf.tb_len - 1) == 1) {
-            putcmdline(typebuf.tb_buf[typebuf.tb_off
-                                      + typebuf.tb_len - 1], FALSE);
-            c1 = 1;
-          }
-        }
-
-        /*
-         * get a character: 3. from the user - get it
-         */
-        wait_tb_len = typebuf.tb_len;
-        c = inchar(
+          /*
+           * get a character: 3. from the user - get it
+           */
+          wait_tb_len = typebuf.tb_len;
+          c = inchar(
               typebuf.tb_buf + typebuf.tb_off + typebuf.tb_len,
               typebuf.tb_buflen - typebuf.tb_off - typebuf.tb_len - 1,
               advance ? calc_waittime(keylen) : 0,
               typebuf.tb_change_cnt);
 
-        if (showcmd_len != 0)
-          pop_showcmd();
-        if (c1 == 1) {
-          if (State & INSERT)
-            edit_unputchar();
-          if (State & CMDLINE)
-            unputcmdline();
-          else
-            setcursor();                /* put cursor back where it belongs */
+          if (showcmd_len != 0)
+            pop_showcmd();
+          if (c1 == 1) {
+            if (State & INSERT)
+              edit_unputchar();
+            if (State & CMDLINE)
+              unputcmdline();
+            else
+              setcursor();                /* put cursor back where it belongs */
+          }
         }
 
         if (c < 0)
