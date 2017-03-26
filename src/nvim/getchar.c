@@ -1875,8 +1875,7 @@ static int vgetorpeek(const int advance)
                   if (*s == RM_SCRIPT
                       && (mp->m_keys[0] != K_SPECIAL
                           || mp->m_keys[1] != KS_EXTRA
-                          || mp->m_keys[2]
-                          != (int)KE_SNR))
+                          || mp->m_keys[2] != (int)KE_SNR))
                     continue;
                   /*
                    * If one of the typed keys cannot be
