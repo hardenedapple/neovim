@@ -1677,7 +1677,6 @@ static int vgetorpeek(const int advance)
   int mode_deleted = FALSE;             /* set when mode has been deleted */
   int mlen;
   int max_mlen;
-  int i;
   int new_wcol, new_wrow;
   int nolmaplen;
   int old_wcol, old_wrow;
@@ -2058,9 +2057,7 @@ static int vgetorpeek(const int advance)
              * If m_noremap is set, don't remap the whole 'to'
              * part.
              */
-            if (s == NULL)
-              i = FAIL;
-            else {
+            if (s != NULL) {
               int noremap;
 
               if (save_m_noremap != REMAP_YES)
@@ -2073,16 +2070,13 @@ static int vgetorpeek(const int advance)
                 noremap = REMAP_YES;
               else
                 noremap = REMAP_SKIP;
-              i = ins_typebuf(s, noremap,
+              ins_typebuf(s, noremap,
                   0, TRUE, cmd_silent || save_m_silent);
               if (save_m_expr)
                 xfree(s);
             }
             xfree(save_m_keys);
             xfree(save_m_str);
-            if (i == FAIL) {
-              continue;
-            }
             continue;
           }
         }
@@ -2241,7 +2235,7 @@ static int vgetorpeek(const int advance)
          * input from the user), show the partially matched characters
          * to the user with showcmd.
          */
-        i = 0;
+        int showcmd_len = 0;
         int c1 = 0;
         if (typebuf.tb_len > 0 && advance && !exmode_active) {
           if (((State & (NORMAL | INSERT)) || State == LANGMAP)
@@ -2262,10 +2256,10 @@ static int vgetorpeek(const int advance)
             curwin->w_wrow = new_wrow;
             push_showcmd();
             if (typebuf.tb_len > SHOWCMD_COLS)
-              i = typebuf.tb_len - SHOWCMD_COLS;
-            while (i < typebuf.tb_len)
+              showcmd_len = typebuf.tb_len - SHOWCMD_COLS;
+            while (showcmd_len < typebuf.tb_len)
               (void)add_to_showcmd(typebuf.tb_buf[typebuf.tb_off
-                                                  + i++]);
+                                                  + showcmd_len++]);
             curwin->w_wcol = old_wcol;
             curwin->w_wrow = old_wrow;
           }
@@ -2291,7 +2285,7 @@ static int vgetorpeek(const int advance)
               advance ? calc_waittime(keylen) : 0,
               typebuf.tb_change_cnt);
 
-        if (i != 0)
+        if (showcmd_len != 0)
           pop_showcmd();
         if (c1 == 1) {
           if (State & INSERT)
