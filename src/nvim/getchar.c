@@ -1615,6 +1615,35 @@ static long calc_waittime(int keylen)
   return p_tm;
 }
 
+static int handle_int(int advance)
+{
+  /* flush all input */
+  int c = inchar(typebuf.tb_buf, typebuf.tb_buflen - 1, 0L,
+      typebuf.tb_change_cnt);
+  /*
+   * If inchar() returns TRUE (script file was active) or we
+   * are inside a mapping, get out of insert mode.
+   * Otherwise we behave like having gotten a CTRL-C.
+   * As a result typing CTRL-C in insert mode will
+   * really insert a CTRL-C.
+   */
+  if ((c || typebuf.tb_maplen)
+      && (State & (INSERT + CMDLINE)))
+    c = ESC;
+  else
+    c = Ctrl_C;
+  flush_buffers(TRUE);                  /* flush all typeahead */
+
+  if (advance) {
+    /* Also record this character, it might be needed to
+     * get out of Insert mode. */
+    *typebuf.tb_buf = (char_u)c;
+    gotchars(typebuf.tb_buf, 1);
+  }
+  cmd_silent = FALSE;
+
+  return c;
+}
 /// get a character:
 /// 1. from the stuffbuffer
 ///    This is used for abbreviated commands like "D" -> "d$".
@@ -1721,31 +1750,7 @@ static int vgetorpeek(int advance)
           os_breakcheck();                      /* check for CTRL-C */
         keylen = 0;
         if (got_int) {
-          /* flush all input */
-          c = inchar(typebuf.tb_buf, typebuf.tb_buflen - 1, 0L,
-              typebuf.tb_change_cnt);
-          /*
-           * If inchar() returns TRUE (script file was active) or we
-           * are inside a mapping, get out of insert mode.
-           * Otherwise we behave like having gotten a CTRL-C.
-           * As a result typing CTRL-C in insert mode will
-           * really insert a CTRL-C.
-           */
-          if ((c || typebuf.tb_maplen)
-              && (State & (INSERT + CMDLINE)))
-            c = ESC;
-          else
-            c = Ctrl_C;
-          flush_buffers(TRUE);                  /* flush all typeahead */
-
-          if (advance) {
-            /* Also record this character, it might be needed to
-             * get out of Insert mode. */
-            *typebuf.tb_buf = (char_u)c;
-            gotchars(typebuf.tb_buf, 1);
-          }
-          cmd_silent = FALSE;
-
+          c = handle_int(advance);
           exiting = true;
           break;
         } else if (typebuf.tb_len > 0) {
