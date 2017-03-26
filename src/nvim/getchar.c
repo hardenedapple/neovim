@@ -1743,21 +1743,27 @@ static int vgetorpeek(const int advance)
        * try re-mapping.
        */
       for (;; ) {
-        /*
-         * os_breakcheck() is slow, don't use it too often when
-         * inside a mapping.  But call it each time for typed
-         * characters.
-         */
-        if (typebuf.tb_maplen)
-          line_breakcheck();
-        else
-          os_breakcheck();                      /* check for CTRL-C */
         keylen = 0;
-        if (got_int) {
-          c = handle_int(advance);
-          exiting = true;
-          break;
-        } else if (typebuf.tb_len > 0) {
+
+        { // Check for CTRL-C
+          /*
+           * os_breakcheck() is slow, don't use it too often when
+           * inside a mapping.  But call it each time for typed
+           * characters.
+           */
+          if (typebuf.tb_maplen)
+            line_breakcheck();
+          else
+            os_breakcheck();
+
+          if (got_int) {
+            c = handle_int(advance);
+            exiting = true;
+            break;
+          }
+        }
+
+        if (typebuf.tb_len > 0) {
           /*
            * Check for a mappable key sequence.
            * Walk through one maphash[] list until we find an
