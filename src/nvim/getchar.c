@@ -1721,7 +1721,7 @@ static int vgetorpeek(const int advance)
 
     if (got_int) {
       c = handle_int(advance);
-      exiting = true;
+      goto found_char;
     } else if (c != NUL) {
       if (advance) {
         /* KeyTyped = FALSE;  When the command that stuffed something
@@ -1731,7 +1731,7 @@ static int vgetorpeek(const int advance)
       }
       if (typebuf.tb_no_abbr_cnt == 0)
         typebuf.tb_no_abbr_cnt = 1;             /* no abbreviations now */
-      exiting = true;
+      goto found_char;
     } else {
       exiting = false;
       /*
@@ -1756,8 +1756,7 @@ static int vgetorpeek(const int advance)
 
           if (got_int) {
             c = handle_int(advance);
-            exiting = true;
-            break;
+            goto found_char;
           }
         }
 
@@ -1974,8 +1973,7 @@ static int vgetorpeek(const int advance)
                 KeyNoremap = typebuf.tb_noremap[typebuf.tb_off];
                 del_typebuf(1, 0);
               }
-              exiting = true;
-              break;  // got character, break for loop
+              goto found_char;
             } else {
               keylen = mp_match_len;
             }
@@ -2211,8 +2209,7 @@ static int vgetorpeek(const int advance)
             else
               c = ESC;
             tc = c;
-            exiting = true;
-            break;
+            goto found_char;
           }
 
           /*
@@ -2303,8 +2300,7 @@ static int vgetorpeek(const int advance)
             continue;                     /* end of input script reached */
           if (c == NUL) {                 /* no character available */
             if (!advance) {
-              exiting = true;
-              break;
+              goto found_char;
             }
             if (wait_tb_len > 0) {                /* timed out */
               timedout = TRUE;
@@ -2323,6 +2319,7 @@ static int vgetorpeek(const int advance)
     /* if advance is FALSE don't loop on NULs */
   } while (!exiting);
 
+found_char:
   do_insert_message(mode_deleted, c, advance);
 
   --vgetc_busy;
