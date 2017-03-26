@@ -1678,7 +1678,6 @@ static int vgetorpeek(const int advance)
   int mlen;
   int max_mlen;
   int nolmaplen;
-  int old_wcol, old_wrow;
   int wait_tb_len;
 
   /*
@@ -2117,8 +2116,8 @@ static int vgetorpeek(const int advance)
               mode_deleted = TRUE;
             }
             validate_cursor();
-            old_wcol = curwin->w_wcol;
-            old_wrow = curwin->w_wrow;
+            int old_wcol = curwin->w_wcol;
+            int old_wrow = curwin->w_wrow;
 
             /* move cursor left, if possible */
             if (curwin->w_cursor.col != 0) {
@@ -2253,8 +2252,8 @@ static int vgetorpeek(const int advance)
                   c1 = 1;
                 }
                 /* need to use the col and row from above here */
-                old_wcol = curwin->w_wcol;
-                old_wrow = curwin->w_wrow;
+                int old_wcol = curwin->w_wcol;
+                int old_wrow = curwin->w_wrow;
                 curwin->w_wcol = new_wcol;
                 curwin->w_wrow = new_wrow;
                 push_showcmd();
