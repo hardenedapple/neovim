@@ -1668,14 +1668,8 @@ static int handle_int(int advance)
 static int vgetorpeek(const int advance)
 {
   int c;
-  int keylen = 0;
-  int mp_match_len = 0;
-  int timedout = FALSE;                     /* waited for more than 1 second
-                                                for mapping to complete */
-  int mapdepth = 0;                 /* check for recursive mapping */
   int mode_deleted = FALSE;             /* set when mode has been deleted */
   int mlen;
-  int max_mlen;
   int nolmaplen;
   int wait_tb_len;
 
@@ -1730,6 +1724,9 @@ static int vgetorpeek(const int advance)
     if (typebuf.tb_no_abbr_cnt == 0)
       typebuf.tb_no_abbr_cnt = 1;             /* no abbreviations now */
   } else {
+    int timedout = FALSE;                     /* waited for more than 1 second
+                                                for mapping to complete */
+    int mapdepth = 0;                 /* check for recursive mapping */
     /*
      * Loop until we either find a matching mapped key, or we
      * are sure that it is not a mapped key.
@@ -1737,7 +1734,7 @@ static int vgetorpeek(const int advance)
      * try re-mapping.
      */
     for (;; ) {
-      keylen = 0;
+      int keylen = 0;
 
       { // Check for CTRL-C
         /*
@@ -1773,7 +1770,8 @@ static int vgetorpeek(const int advance)
          * - in Ctrl-X mode, and we get a valid char for that mode
          */
         mapblock_T *mp = NULL;
-        max_mlen = 0;
+        int max_mlen = 0;
+        int mp_match_len;
         int temp_c = typebuf.tb_buf[typebuf.tb_off];
         if (no_mapping == 0 && maphash_valid
             && (no_zero_mapping == 0 || temp_c != '0')
