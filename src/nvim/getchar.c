@@ -1640,7 +1640,6 @@ static int vgetorpeek(int advance)
 {
   int c;
   int keylen;
-  char_u      *s;
   int mp_match_len = 0;
   int timedout = FALSE;                     /* waited for more than 1 second
                                                 for mapping to complete */
@@ -1854,7 +1853,7 @@ static int vgetorpeek(int advance)
                    * allowed, check if the mapping starts
                    * with K_SNR.
                    */
-                  s = typebuf.tb_noremap + typebuf.tb_off;
+                  char_u *s = typebuf.tb_noremap + typebuf.tb_off;
                   if (*s == RM_SCRIPT
                       && (mp->m_keys[0] != K_SPECIAL
                           || mp->m_keys[1] != KS_EXTRA
@@ -2026,6 +2025,7 @@ static int vgetorpeek(int advance)
              * expression.  Also save and restore the command line
              * for "normal :".
              */
+            char_u *s;
             if (mp->m_expr) {
               int save_vgetc_busy = vgetc_busy;
 
