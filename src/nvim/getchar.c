@@ -1578,6 +1578,43 @@ vungetc ( /* unget one character (can only be done once!) */
   old_mouse_col = mouse_col;
 }
 
+static void do_insert_message(int mode_deleted, int c, int advance)
+{
+  /*
+   * The "INSERT" message is taken care of here:
+   *	 if we return an ESC to exit insert mode, the message is deleted
+   *	 if we don't return an ESC but deleted the message before, redisplay it
+   */
+  if (advance && p_smd && msg_silent == 0 && (State & INSERT)) {
+    if (c == ESC && !mode_deleted && !no_mapping && mode_displayed) {
+      if (typebuf.tb_len && !KeyTyped)
+        redraw_cmdline = TRUE;              /* delete mode later */
+      else
+        unshowmode(FALSE);
+    } else if (c != ESC && mode_deleted) {
+      if (typebuf.tb_len && !KeyTyped)
+        redraw_cmdline = TRUE;              /* show mode later */
+      else
+        showmode();
+    }
+  }
+}
+
+static long calc_waittime(int keylen)
+{
+  if (typebuf.tb_len == 0) {
+    return -1L;
+  } else if (!p_timeout) {
+    return -1L;
+  } else if (!p_ttimeout && keylen == KEYLEN_PART_KEY) {
+    return -1L;
+  } else if (keylen == KEYLEN_PART_KEY && p_ttm >= 0) {
+    return p_ttm;
+  }
+
+  return p_tm;
+}
+
 /// get a character:
 /// 1. from the stuffbuffer
 ///    This is used for abbreviated commands like "D" -> "d$".
@@ -1604,9 +1641,6 @@ static int vgetorpeek(int advance)
   int c, c1;
   int keylen;
   char_u      *s;
-  mapblock_T  *mp;
-  mapblock_T  *mp2;
-  mapblock_T  *mp_match;
   int mp_match_len = 0;
   int timedout = FALSE;                     /* waited for more than 1 second
                                                 for mapping to complete */
@@ -1730,7 +1764,7 @@ static int vgetorpeek(int advance)
            * - waiting for a char with --more--
            * - in Ctrl-X mode, and we get a valid char for that mode
            */
-          mp = NULL;
+          mapblock_T *mp = NULL;
           max_mlen = 0;
           c1 = typebuf.tb_buf[typebuf.tb_off];
           if (no_mapping == 0 && maphash_valid
@@ -1747,6 +1781,7 @@ static int vgetorpeek(int advance)
                    || ((compl_cont_status & CONT_LOCAL)
                        && (c1 == Ctrl_N || c1 == Ctrl_P)))
               ) {
+            mapblock_T *mp2 = NULL;
             if (c1 == K_SPECIAL) {
               nolmaplen = 2;
             } else {
@@ -1769,7 +1804,7 @@ static int vgetorpeek(int advance)
              * A full match is only accepted if there is no partly
              * match, so "aa" and "aaa" can both be mapped.
              */
-            mp_match = NULL;
+            mapblock_T *mp_match = NULL;
             mp_match_len = 0;
             for (; mp != NULL;
                  mp->m_next == NULL ? (mp = mp2, mp2 = NULL) :
@@ -2238,17 +2273,11 @@ static int vgetorpeek(int advance)
          * get a character: 3. from the user - get it
          */
         wait_tb_len = typebuf.tb_len;
-        c = inchar(typebuf.tb_buf + typebuf.tb_off + typebuf.tb_len,
-            typebuf.tb_buflen - typebuf.tb_off - typebuf.tb_len - 1,
-            !advance
-            ? 0
-            : ((typebuf.tb_len == 0
-                || !(p_timeout || (p_ttimeout
-                                   && keylen == KEYLEN_PART_KEY)))
-               ? -1L
-               : ((keylen == KEYLEN_PART_KEY && p_ttm >= 0)
-                  ? p_ttm
-                  : p_tm)), typebuf.tb_change_cnt);
+        c = inchar(
+              typebuf.tb_buf + typebuf.tb_off + typebuf.tb_len,
+              typebuf.tb_buflen - typebuf.tb_off - typebuf.tb_len - 1,
+              advance ? calc_waittime(keylen) : 0,
+              typebuf.tb_change_cnt);
 
         if (i != 0)
           pop_showcmd();
@@ -2282,24 +2311,7 @@ static int vgetorpeek(int advance)
     /* if advance is FALSE don't loop on NULs */
   } while (c < 0 || (advance && c == NUL));
 
-  /*
-   * The "INSERT" message is taken care of here:
-   *	 if we return an ESC to exit insert mode, the message is deleted
-   *	 if we don't return an ESC but deleted the message before, redisplay it
-   */
-  if (advance && p_smd && msg_silent == 0 && (State & INSERT)) {
-    if (c == ESC && !mode_deleted && !no_mapping && mode_displayed) {
-      if (typebuf.tb_len && !KeyTyped)
-        redraw_cmdline = TRUE;              /* delete mode later */
-      else
-        unshowmode(FALSE);
-    } else if (c != ESC && mode_deleted) {
-      if (typebuf.tb_len && !KeyTyped)
-        redraw_cmdline = TRUE;              /* show mode later */
-      else
-        showmode();
-    }
-  }
+  do_insert_message(mode_deleted, c, advance);
 
   --vgetc_busy;
 
