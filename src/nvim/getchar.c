@@ -1752,7 +1752,7 @@ static int vgetorpeek(const int advance)
 
         if (got_int) {
           c = handle_int(advance);
-          goto found_char;
+          break;
         }
       }
 
@@ -1969,7 +1969,7 @@ static int vgetorpeek(const int advance)
               KeyNoremap = typebuf.tb_noremap[typebuf.tb_off];
               del_typebuf(1, 0);
             }
-            goto found_char;
+            break;
           } else {
             keylen = mp_match_len;
           }
@@ -2205,7 +2205,7 @@ static int vgetorpeek(const int advance)
           else
             c = ESC;
           tc = c;
-          goto found_char;
+          break;
         }
 
         /*
@@ -2296,7 +2296,7 @@ static int vgetorpeek(const int advance)
           continue;                     /* end of input script reached */
         if (c == NUL) {                 /* no character available */
           if (!advance) {
-            goto found_char;
+            break;
           }
           if (wait_tb_len > 0) {                /* timed out */
             timedout = TRUE;
@@ -2312,7 +2312,6 @@ static int vgetorpeek(const int advance)
     }             /* for (;;) */
   }           /* if (!character from stuffbuf) */
 
-found_char:
   do_insert_message(mode_deleted, c, advance);
 
   --vgetc_busy;
