@@ -1665,7 +1665,7 @@ static int handle_int(int advance)
 /// When "no_mapping" is zero, checks for mappings in the current mode.
 /// Only returns one byte (of a multi-byte character).
 /// K_SPECIAL and CSI may be escaped, need to get two more bytes then.
-static int vgetorpeek(int advance)
+static int vgetorpeek(const int advance)
 {
   bool exiting = true;
   int c;
