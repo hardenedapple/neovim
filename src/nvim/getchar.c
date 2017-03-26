@@ -1638,6 +1638,7 @@ static long calc_waittime(int keylen)
 /// K_SPECIAL and CSI may be escaped, need to get two more bytes then.
 static int vgetorpeek(int advance)
 {
+  bool exiting = true;
   int c;
   int keylen;
   int mp_match_len = 0;
@@ -1701,6 +1702,7 @@ static int vgetorpeek(int advance)
       if (typebuf.tb_no_abbr_cnt == 0)
         typebuf.tb_no_abbr_cnt = 1;             /* no abbreviations now */
     } else {
+      exiting = false;
       /*
        * Loop until we either find a matching mapped key, or we
        * are sure that it is not a mapped key.
@@ -1744,6 +1746,7 @@ static int vgetorpeek(int advance)
           }
           cmd_silent = FALSE;
 
+          exiting = true;
           break;
         } else if (typebuf.tb_len > 0) {
           /*
@@ -1959,6 +1962,7 @@ static int vgetorpeek(int advance)
                 KeyNoremap = typebuf.tb_noremap[typebuf.tb_off];
                 del_typebuf(1, 0);
               }
+              exiting = !(c < 0 || (advance && c == NUL));
               break;  // got character, break for loop
             } else {
               keylen = mp_match_len;
@@ -1994,7 +1998,7 @@ static int vgetorpeek(int advance)
                 setcursor();
               flush_buffers(FALSE);
               mapdepth = 0;                     /* for next one */
-              c = -1;
+              c = -1; // XXX Need to set c == -1 anymore?
               break;
             }
 
@@ -2068,7 +2072,7 @@ static int vgetorpeek(int advance)
             xfree(save_m_keys);
             xfree(save_m_str);
             if (i == FAIL) {
-              c = -1;
+              c = -1; // XXX Need to set c == -1 anymore?
               break;
             }
             continue;
@@ -2204,6 +2208,7 @@ static int vgetorpeek(int advance)
           else
             c = ESC;
           tc = c;
+          exiting = true;
           break;
         }
 
@@ -2292,8 +2297,10 @@ static int vgetorpeek(int advance)
         if (c < 0)
           continue;                     /* end of input script reached */
         if (c == NUL) {                 /* no character available */
-          if (!advance)
+          if (!advance) {
+            exiting = true;
             break;
+          }
           if (wait_tb_len > 0) {                /* timed out */
             timedout = TRUE;
             continue;
@@ -2308,7 +2315,7 @@ static int vgetorpeek(int advance)
     }           /* if (!character from stuffbuf) */
 
     /* if advance is FALSE don't loop on NULs */
-  } while (c < 0 || (advance && c == NUL));
+  } while (!exiting);
 
   do_insert_message(mode_deleted, c, advance);
 
