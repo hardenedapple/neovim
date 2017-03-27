@@ -1984,7 +1984,7 @@ static int8_t look_in_typebuf(int *cp, int *mapdepthp, int *keylenp,
 // Returns 0 to continue, 1 to break, -1 to carry on in the loop.
 // If it's found a key, leaves the new value of "c" in "*cp"
 static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
-    const int advance_inner, const int keylen_inner)
+    const int advance, const int keylen)
 {
   /*
    * special case: if we get an <ESC> in insert mode and there
@@ -1996,7 +1996,7 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
    */
   int new_wcol = curwin->w_wcol;
   int new_wrow = curwin->w_wrow;
-  if (       advance_inner
+  if (       advance
       && typebuf.tb_len == 1
       && typebuf.tb_buf[typebuf.tb_off] == ESC
       && !no_mapping
@@ -2004,7 +2004,7 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
       && typebuf.tb_maplen == 0
       && (State & INSERT)
       && (p_timeout
-        || (keylen_inner == KEYLEN_PART_KEY && p_ttimeout))
+        || (keylen == KEYLEN_PART_KEY && p_ttimeout))
       && (*cp = inchar(typebuf.tb_buf + typebuf.tb_off
           + typebuf.tb_len, 3, 25L,
           typebuf.tb_change_cnt)) == 0) {
@@ -2125,7 +2125,7 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
    * redrawing was postponed because there was something in the
    * input buffer (e.g., termresponse). */
   if (((State & INSERT) != 0 || p_lz) && (State & CMDLINE) == 0
-      && advance_inner && must_redraw != 0 && !need_wait_return) {
+      && advance && must_redraw != 0 && !need_wait_return) {
     update_screen(0);
     setcursor();           /* put cursor back where it belongs */
   }
@@ -2138,7 +2138,7 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
   { // Using the showcmd_len, wait_tb_len, and c1 variables
     int showcmd_len = 0;
     int c1 = 0;
-    if (typebuf.tb_len > 0 && advance_inner && !exmode_active) {
+    if (typebuf.tb_len > 0 && advance && !exmode_active) {
       if (((State & (NORMAL | INSERT)) || State == LANGMAP)
           && State != HITRETURN) {
         /* this looks nice when typing a dead character map */
@@ -2183,7 +2183,7 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
     *cp = inchar(
         typebuf.tb_buf + typebuf.tb_off + typebuf.tb_len,
         typebuf.tb_buflen - typebuf.tb_off - typebuf.tb_len - 1,
-        advance_inner ? calc_waittime(keylen_inner) : 0,
+        advance ? calc_waittime(keylen) : 0,
         typebuf.tb_change_cnt);
 
     if (showcmd_len != 0)
@@ -2200,7 +2200,7 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
     if (*cp < 0)
       return 0;                     /* end of input script reached */
     if (*cp == NUL) {                 /* no character available */
-      if (!advance_inner) {
+      if (!advance) {
         return 1;
       }
       if (wait_tb_len > 0) {                /* timed out */
