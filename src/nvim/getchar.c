@@ -2100,6 +2100,7 @@ static int vgetorpeek(const int advance)
 
       { // get a character: 3. from the user - handle <Esc> in Insert mode
         const int advance_inner = advance;
+        const int keylen_inner = keylen;
         int *timedoutp = &timedout;
         int *mode_deletedp = &mode_deleted;
         int *cp = &c;
@@ -2122,7 +2123,7 @@ static int vgetorpeek(const int advance)
             && typebuf.tb_maplen == 0
             && (State & INSERT)
             && (p_timeout
-              || (keylen == KEYLEN_PART_KEY && p_ttimeout))
+              || (keylen_inner == KEYLEN_PART_KEY && p_ttimeout))
             && (*cp = inchar(typebuf.tb_buf + typebuf.tb_off
                 + typebuf.tb_len, 3, 25L,
                 typebuf.tb_change_cnt)) == 0) {
@@ -2301,7 +2302,7 @@ static int vgetorpeek(const int advance)
           *cp = inchar(
               typebuf.tb_buf + typebuf.tb_off + typebuf.tb_len,
               typebuf.tb_buflen - typebuf.tb_off - typebuf.tb_len - 1,
-              advance_inner ? calc_waittime(keylen) : 0,
+              advance_inner ? calc_waittime(keylen_inner) : 0,
               typebuf.tb_change_cnt);
 
           if (showcmd_len != 0)
