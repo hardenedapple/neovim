@@ -2102,6 +2102,7 @@ static int vgetorpeek(const int advance)
         const int advance_inner = advance;
         int *timedoutp = &timedout;
         int *mode_deletedp = &mode_deleted;
+        int *cp = &c;
         /*
          * special case: if we get an <ESC> in insert mode and there
          * are no more characters at once, we pretend to go out of
@@ -2110,7 +2111,7 @@ static int vgetorpeek(const int advance)
          * have to redisplay the mode. That the cursor is in the wrong
          * place does not matter.
          */
-        c = 0;
+        *cp = 0;
         int new_wcol = curwin->w_wcol;
         int new_wrow = curwin->w_wrow;
         if (       advance_inner
@@ -2122,7 +2123,7 @@ static int vgetorpeek(const int advance)
             && (State & INSERT)
             && (p_timeout
               || (keylen == KEYLEN_PART_KEY && p_ttimeout))
-            && (c = inchar(typebuf.tb_buf + typebuf.tb_off
+            && (*cp = inchar(typebuf.tb_buf + typebuf.tb_off
                 + typebuf.tb_len, 3, 25L,
                 typebuf.tb_change_cnt)) == 0) {
           colnr_T col = 0, vcol;
@@ -2187,15 +2188,15 @@ static int vgetorpeek(const int advance)
           curwin->w_wcol = old_wcol;
           curwin->w_wrow = old_wrow;
         }
-        if (c < 0)
+        if (*cp < 0)
           continue;             /* end of input script reached */
 
-        // Allow mapping for just typed characters. When we get here c
+        // Allow mapping for just typed characters. When we get here *cp
         // is the number of extra bytes and typebuf.tb_len is 1.
-        for (int n = 1; n <= c; n++) {
+        for (int n = 1; n <= *cp; n++) {
           typebuf.tb_noremap[typebuf.tb_off + n] = RM_YES;
         }
-        typebuf.tb_len += c;
+        typebuf.tb_len += *cp;
 
         /* buffer full, don't map */
         if (typebuf.tb_len >= typebuf.tb_maplen + MAXMAPLEN) {
@@ -2220,14 +2221,14 @@ static int vgetorpeek(const int advance)
            * CTRL-C: ESC for most situations and CTRL-C to close the
            * cmdline window. */
           if (p_im && (State & INSERT))
-            c = Ctrl_L;
+            *cp = Ctrl_L;
           else if ((State & CMDLINE)
               || (cmdwin_type > 0 && tc == ESC)
               )
-            c = Ctrl_C;
+            *cp = Ctrl_C;
           else
-            c = ESC;
-          tc = c;
+            *cp = ESC;
+          tc = *cp;
           break;
         }
 
@@ -2297,7 +2298,7 @@ static int vgetorpeek(const int advance)
            * get a character: 3. from the user - get it
            */
           int wait_tb_len = typebuf.tb_len;
-          c = inchar(
+          *cp = inchar(
               typebuf.tb_buf + typebuf.tb_off + typebuf.tb_len,
               typebuf.tb_buflen - typebuf.tb_off - typebuf.tb_len - 1,
               advance_inner ? calc_waittime(keylen) : 0,
@@ -2314,9 +2315,9 @@ static int vgetorpeek(const int advance)
               setcursor();                /* put cursor back where it belongs */
           }
 
-          if (c < 0)
+          if (*cp < 0)
             continue;                     /* end of input script reached */
-          if (c == NUL) {                 /* no character available */
+          if (*cp == NUL) {                 /* no character available */
             if (!advance_inner) {
               break;
             }
