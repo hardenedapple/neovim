@@ -1754,6 +1754,7 @@ static int vgetorpeek(const int advance)
         const int local_State = loc_Stat;
         const int advance_inner = advance;
         const int timedout_inner = timedout;
+        int *cp = &c;
         /*
          * Check for a mappable key sequence.
          * Walk through one maphash[] list until we find an
@@ -1957,7 +1958,7 @@ static int vgetorpeek(const int advance)
           // buffer right here. Otherwise, use the mapping (loop around).
           if (mp == NULL) {
             // get a character: 2. from the typeahead buffer
-            c = typebuf.tb_buf[typebuf.tb_off] & 255;
+            *cp = typebuf.tb_buf[typebuf.tb_off] & 255;
             if (advance_inner) {                  // remove chars from tb_buf
               cmd_silent = (typebuf.tb_silent > 0);
               if (typebuf.tb_maplen > 0) {
