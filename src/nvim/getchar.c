@@ -1879,84 +1879,85 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
        * matches and it is for the current state.
        * Skip ":lmap" mappings if keys were mapped.
        */
-      if (mp->m_keys[0] == temp_c
-          && (mp->m_mode & local_State)
-          && ((mp->m_mode & LANGMAP) == 0
-            || typebuf.tb_maplen == 0)) {
-        int nomap = nolmaplen;
-        int c2;
-        /* find the match length of this mapping */
-        int mlen = 1;
-        for (mlen = 1; mlen < typebuf.tb_len; ++mlen) {
-          c2 = typebuf.tb_buf[typebuf.tb_off + mlen];
-          if (nomap > 0)
-            --nomap;
-          else if (c2 == K_SPECIAL)
-            nomap = 2;
-          else
-            LANGMAP_ADJUST(c2, TRUE);
-          if (mp->m_keys[mlen] != c2)
-            break;
-        }
-
-        /* Don't allow mapping the first byte(s) of a
-         * multi-byte char.  Happens when mapping
-         * <M-a> and then changing 'encoding'. Beware
-         * that 0x80 is escaped. */
-        char_u *p1 = mp->m_keys;
-        char_u *p2 = mb_unescape(&p1);
-
-        if (has_mbyte && p2 != NULL && MB_BYTE2LEN(temp_c) > MB_PTR2LEN(p2))
-          mlen = 0;
-        /*
-         * Check an entry whether it matches.
-         * - Full match: mlen == keylen
-         * - Partly match: mlen == typebuf.tb_len
-         */
-        *keylenp = mp->m_keylen;
-        if (mlen == *keylenp
-            || (mlen == typebuf.tb_len
-              && typebuf.tb_len < *keylenp)) {
-          /*
-           * If only script-local mappings are
-           * allowed, check if the mapping starts
-           * with K_SNR.
-           */
-          char_u *s = typebuf.tb_noremap + typebuf.tb_off;
-          if (*s == RM_SCRIPT
-              && (mp->m_keys[0] != K_SPECIAL
-                || mp->m_keys[1] != KS_EXTRA
-                || mp->m_keys[2] != (int)KE_SNR))
-            continue;
-          /*
-           * If one of the typed keys cannot be
-           * remapped, skip the entry.
-           */
-          int n;
-          for (n = mlen; --n >= 0; )
-            if (*s++ & (RM_NONE|RM_ABBR))
-              break;
-          if (n >= 0)
-            continue;
-
-          if (*keylenp > typebuf.tb_len) {
-            if (!timedout && !(mp_match != NULL
-                  && mp_match->m_nowait)) {
-              /* break at a partly match */
-              *keylenp = KEYLEN_PART_MAP;
-              break;
-            }
-          } else if (*keylenp > *mp_match_lenp) {
-            /* found a longer match */
-            mp_match = mp;
-            *mp_match_lenp = *keylenp;
-          }
-        } else
-          /* No match; may have to check for
-           * termcode at next character. */
-          if (max_mlen < mlen)
-            max_mlen = mlen;
+      if (mp->m_keys[0] != temp_c
+          || ((mp->m_mode & local_State) == 0)
+          || (((mp->m_mode & LANGMAP) != 0)
+            && typebuf.tb_maplen != 0)) {
+        continue;
       }
+      int nomap = nolmaplen;
+      int c2;
+      /* find the match length of this mapping */
+      int mlen = 1;
+      for (mlen = 1; mlen < typebuf.tb_len; ++mlen) {
+        c2 = typebuf.tb_buf[typebuf.tb_off + mlen];
+        if (nomap > 0)
+          --nomap;
+        else if (c2 == K_SPECIAL)
+          nomap = 2;
+        else
+          LANGMAP_ADJUST(c2, TRUE);
+        if (mp->m_keys[mlen] != c2)
+          break;
+      }
+
+      /* Don't allow mapping the first byte(s) of a
+       * multi-byte char.  Happens when mapping
+       * <M-a> and then changing 'encoding'. Beware
+       * that 0x80 is escaped. */
+      char_u *p1 = mp->m_keys;
+      char_u *p2 = mb_unescape(&p1);
+
+      if (has_mbyte && p2 != NULL && MB_BYTE2LEN(temp_c) > MB_PTR2LEN(p2))
+        mlen = 0;
+      /*
+       * Check an entry whether it matches.
+       * - Full match: mlen == keylen
+       * - Partly match: mlen == typebuf.tb_len
+       */
+      *keylenp = mp->m_keylen;
+      if (mlen == *keylenp
+          || (mlen == typebuf.tb_len
+            && typebuf.tb_len < *keylenp)) {
+        /*
+         * If only script-local mappings are
+         * allowed, check if the mapping starts
+         * with K_SNR.
+         */
+        char_u *s = typebuf.tb_noremap + typebuf.tb_off;
+        if (*s == RM_SCRIPT
+            && (mp->m_keys[0] != K_SPECIAL
+              || mp->m_keys[1] != KS_EXTRA
+              || mp->m_keys[2] != (int)KE_SNR))
+          continue;
+        /*
+         * If one of the typed keys cannot be
+         * remapped, skip the entry.
+         */
+        int n;
+        for (n = mlen; --n >= 0; )
+          if (*s++ & (RM_NONE|RM_ABBR))
+            break;
+        if (n >= 0)
+          continue;
+
+        if (*keylenp > typebuf.tb_len) {
+          if (!timedout && !(mp_match != NULL
+                && mp_match->m_nowait)) {
+            /* break at a partly match */
+            *keylenp = KEYLEN_PART_MAP;
+            break;
+          }
+        } else if (*keylenp > *mp_match_lenp) {
+          /* found a longer match */
+          mp_match = mp;
+          *mp_match_lenp = *keylenp;
+        }
+      } else
+        /* No match; may have to check for
+         * termcode at next character. */
+        if (max_mlen < mlen)
+          max_mlen = mlen;
     }
 
     /* If no partly match found, use the longest full
