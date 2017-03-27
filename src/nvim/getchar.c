@@ -1649,7 +1649,7 @@ static int handle_int(int advance)
 // If it's found a key, leaves the new value of "c" in "*cp"
 // Keeps track of the mapdepth in the variable pointed to by "mapdepthp".
 static int8_t look_in_typebuf(int *cp, int *mapdepthp, int *keylenp,
-    const int timedout_inner, const int advance_inner, const int local_State)
+    const int timedout, const int advance, const int local_State)
 {
   if (typebuf.tb_len <= 0) {
     return -1;
@@ -1782,7 +1782,7 @@ static int8_t look_in_typebuf(int *cp, int *mapdepthp, int *keylenp,
             continue;
 
           if (*keylenp > typebuf.tb_len) {
-            if (!timedout_inner && !(mp_match != NULL
+            if (!timedout && !(mp_match != NULL
                   && mp_match->m_nowait)) {
               /* break at a partly match */
               *keylenp = KEYLEN_PART_MAP;
@@ -1858,7 +1858,7 @@ static int8_t look_in_typebuf(int *cp, int *mapdepthp, int *keylenp,
     if (mp == NULL) {
       // get a character: 2. from the typeahead buffer
       *cp = typebuf.tb_buf[typebuf.tb_off] & 255;
-      if (advance_inner) {                  // remove chars from tb_buf
+      if (advance) {                  // remove chars from tb_buf
         cmd_silent = (typebuf.tb_silent > 0);
         if (typebuf.tb_maplen > 0) {
           KeyTyped = false;
@@ -2023,7 +2023,7 @@ static int vgetorpeek(const int advance)
       )
     return NUL;
 
-  const int loc_Stat = get_real_state();
+  const int local_State = get_real_state();
 
   ++vgetc_busy;
 
@@ -2089,7 +2089,7 @@ static int vgetorpeek(const int advance)
 
       {
         int8_t control_id = look_in_typebuf(&c, &mapdepth, &keylen,
-            timedout, advance, loc_Stat);
+            timedout, advance, local_State);
         if (control_id == 0) {
           continue;
         } else if (control_id == 1) {
