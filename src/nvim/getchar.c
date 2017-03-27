@@ -1686,7 +1686,7 @@ static int vgetorpeek(const int advance)
       )
     return NUL;
 
-  const int local_State = get_real_state();
+  const int loc_Stat = get_real_state();
 
   ++vgetc_busy;
 
@@ -1751,6 +1751,9 @@ static int vgetorpeek(const int advance)
       }
 
       if (typebuf.tb_len > 0) {
+        const int local_State = loc_Stat;
+        const int advance_inner = advance;
+        const int timedout_inner = timedout;
         /*
          * Check for a mappable key sequence.
          * Walk through one maphash[] list until we find an
@@ -1879,7 +1882,7 @@ static int vgetorpeek(const int advance)
                   continue;
 
                 if (keylen > typebuf.tb_len) {
-                  if (!timedout && !(mp_match != NULL
+                  if (!timedout_inner && !(mp_match != NULL
                         && mp_match->m_nowait)) {
                     /* break at a partly match */
                     keylen = KEYLEN_PART_MAP;
@@ -1955,7 +1958,7 @@ static int vgetorpeek(const int advance)
           if (mp == NULL) {
             // get a character: 2. from the typeahead buffer
             c = typebuf.tb_buf[typebuf.tb_off] & 255;
-            if (advance) {                  // remove chars from tb_buf
+            if (advance_inner) {                  // remove chars from tb_buf
               cmd_silent = (typebuf.tb_silent > 0);
               if (typebuf.tb_maplen > 0) {
                 KeyTyped = false;
