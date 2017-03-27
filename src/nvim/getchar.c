@@ -1645,6 +1645,52 @@ static int handle_int(int advance)
   return c;
 }
 
+// Returns `true` if have toggled the 'paste' option, and hence should continue
+// on to find the next character.
+static bool check_togglepaste(mapblock_T *mp, int *max_mlenp, int *keylenp)
+{
+  // Check for a key that can toggle the 'paste' option
+  if (mp == NULL && (State & (INSERT|NORMAL))) {
+    int mlen;
+    bool match = typebuf_match_len(ui_toggle, &mlen);
+    if (!match && mlen != typebuf.tb_len && *p_pt != NUL) {
+      // didn't match ui_toggle_key and didn't try the whole typebuf,
+      // check the 'pastetoggle'
+      match = typebuf_match_len(p_pt, &mlen);
+    }
+    if (match) {
+      // write chars to script file(s)
+      if (mlen > typebuf.tb_maplen) {
+        gotchars(typebuf.tb_buf + typebuf.tb_off + typebuf.tb_maplen,
+            (size_t)(mlen - typebuf.tb_maplen));
+      }
+
+      del_typebuf(mlen, 0);               /* remove the chars */
+      set_option_value((char_u *)"paste",
+          (long)!p_paste, NULL, 0);
+      if (!(State & INSERT)) {
+        msg_col = 0;
+        msg_row = (int)Rows - 1;
+        msg_clr_eos();                          // clear ruler
+      }
+      status_redraw_all();
+      redraw_statuslines();
+      showmode();
+      setcursor();
+      return true;
+    }
+    /* Need more chars for partly match. */
+    if (mlen == typebuf.tb_len)
+      *keylenp = KEYLEN_PART_KEY;
+    else if (*max_mlenp < mlen)
+      /* no match, may have to check for termcode at
+       * next character */
+      *max_mlenp = mlen + 1;
+  }
+
+  return false;
+}
+
 // Returns 0 to continue, -1 to carry on in the loop, otherwise, returns the
 // character that should be used.
 // Keeps track of the mapdepth in the variable pointed to by "mapdepthp".
@@ -1808,43 +1854,10 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
     }
   }
 
-  // Check for a key that can toggle the 'paste' option
-  if (mp == NULL && (State & (INSERT|NORMAL))) {
-    int mlen;
-    bool match = typebuf_match_len(ui_toggle, &mlen);
-    if (!match && mlen != typebuf.tb_len && *p_pt != NUL) {
-      // didn't match ui_toggle_key and didn't try the whole typebuf,
-      // check the 'pastetoggle'
-      match = typebuf_match_len(p_pt, &mlen);
-    }
-    if (match) {
-      // write chars to script file(s)
-      if (mlen > typebuf.tb_maplen) {
-        gotchars(typebuf.tb_buf + typebuf.tb_off + typebuf.tb_maplen,
-            (size_t)(mlen - typebuf.tb_maplen));
-      }
-
-      del_typebuf(mlen, 0);               /* remove the chars */
-      set_option_value((char_u *)"paste",
-          (long)!p_paste, NULL, 0);
-      if (!(State & INSERT)) {
-        msg_col = 0;
-        msg_row = (int)Rows - 1;
-        msg_clr_eos();                          // clear ruler
-      }
-      status_redraw_all();
-      redraw_statuslines();
-      showmode();
-      setcursor();
-      return 0;
-    }
-    /* Need more chars for partly match. */
-    if (mlen == typebuf.tb_len)
-      *keylenp = KEYLEN_PART_KEY;
-    else if (max_mlen < mlen)
-      /* no match, may have to check for termcode at
-       * next character */
-      max_mlen = mlen + 1;
+  if (check_togglepaste(mp, &max_mlen, keylenp)) {
+    // Have toggled 'paste', now have to start searching for characters again
+    // in order to find the character that nvim proper needs to deal with.
+    return 0;
   }
 
   if ((mp == NULL || max_mlen >= *mp_match_lenp)
