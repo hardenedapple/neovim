@@ -1845,6 +1845,7 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
         || ((compl_cont_status & CONT_LOCAL)
           && (temp_c == Ctrl_N || temp_c == Ctrl_P)))
      ) {
+    int keylen = *keylenp;
     mapblock_T *mp2 = NULL;
     int nolmaplen;
     if (temp_c == K_SPECIAL) {
@@ -1915,10 +1916,10 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
        * - Full match: mlen == keylen
        * - Partly match: mlen == typebuf.tb_len
        */
-      *keylenp = mp->m_keylen;
-      if (mlen == *keylenp
+      keylen = mp->m_keylen;
+      if (mlen == keylen
           || (mlen == typebuf.tb_len
-            && typebuf.tb_len < *keylenp)) {
+            && typebuf.tb_len < keylen)) {
         /*
          * If only script-local mappings are
          * allowed, check if the mapping starts
@@ -1941,17 +1942,17 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
         if (n >= 0)
           continue;
 
-        if (*keylenp > typebuf.tb_len) {
+        if (keylen > typebuf.tb_len) {
           if (!timedout && !(mp_match != NULL
                 && mp_match->m_nowait)) {
             /* break at a partly match */
-            *keylenp = KEYLEN_PART_MAP;
+            keylen = KEYLEN_PART_MAP;
             break;
           }
-        } else if (*keylenp > *mp_match_lenp) {
+        } else if (keylen > *mp_match_lenp) {
           /* found a longer match */
           mp_match = mp;
-          *mp_match_lenp = *keylenp;
+          *mp_match_lenp = keylen;
         }
       } else
         /* No match; may have to check for
@@ -1962,10 +1963,11 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
 
     /* If no partly match found, use the longest full
      * match. */
-    if (*keylenp != KEYLEN_PART_MAP) {
+    if (keylen != KEYLEN_PART_MAP) {
       mp = mp_match;
-      *keylenp = *mp_match_lenp;
+      keylen = *mp_match_lenp;
     }
+    *keylenp = keylen;
   }
 
   if (check_togglepaste(mp, &max_mlen, keylenp)) {
