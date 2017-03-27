@@ -1669,8 +1669,6 @@ static int vgetorpeek(const int advance)
 {
   int c;
   int mode_deleted = FALSE;             /* set when mode has been deleted */
-  int nolmaplen;
-  int wait_tb_len;
 
   /*
    * This function doesn't work very well when called recursively.  This may
@@ -1787,6 +1785,7 @@ static int vgetorpeek(const int advance)
                 && (temp_c == Ctrl_N || temp_c == Ctrl_P)))
            ) {
           mapblock_T *mp2 = NULL;
+          int nolmaplen;
           if (temp_c == K_SPECIAL) {
             nolmaplen = 2;
           } else {
@@ -2228,7 +2227,7 @@ static int vgetorpeek(const int advance)
          * input from the user), show the partially matched characters
          * to the user with showcmd.
          */
-        { // Using the showcmd_len and c1 variables
+        { // Using the showcmd_len, wait_tb_len, and c1 variables
           int showcmd_len = 0;
           int c1 = 0;
           if (typebuf.tb_len > 0 && advance && !exmode_active) {
@@ -2272,7 +2271,7 @@ static int vgetorpeek(const int advance)
           /*
            * get a character: 3. from the user - get it
            */
-          wait_tb_len = typebuf.tb_len;
+          int wait_tb_len = typebuf.tb_len;
           c = inchar(
               typebuf.tb_buf + typebuf.tb_off + typebuf.tb_len,
               typebuf.tb_buflen - typebuf.tb_off - typebuf.tb_len - 1,
@@ -2289,23 +2288,23 @@ static int vgetorpeek(const int advance)
             else
               setcursor();                /* put cursor back where it belongs */
           }
-        }
 
-        if (c < 0)
-          continue;                     /* end of input script reached */
-        if (c == NUL) {                 /* no character available */
-          if (!advance) {
-            break;
+          if (c < 0)
+            continue;                     /* end of input script reached */
+          if (c == NUL) {                 /* no character available */
+            if (!advance) {
+              break;
+            }
+            if (wait_tb_len > 0) {                /* timed out */
+              timedout = TRUE;
+              continue;
+            }
+          } else {          /* allow mapping for just typed characters */
+            while (typebuf.tb_buf[typebuf.tb_off
+                + typebuf.tb_len] != NUL)
+              typebuf.tb_noremap[typebuf.tb_off
+                + typebuf.tb_len++] = RM_YES;
           }
-          if (wait_tb_len > 0) {                /* timed out */
-            timedout = TRUE;
-            continue;
-          }
-        } else {          /* allow mapping for just typed characters */
-          while (typebuf.tb_buf[typebuf.tb_off
-              + typebuf.tb_len] != NUL)
-            typebuf.tb_noremap[typebuf.tb_off
-              + typebuf.tb_len++] = RM_YES;
         }
       }
     }             /* for (;;) */
