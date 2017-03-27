@@ -1697,9 +1697,9 @@ static bool check_togglepaste(mapblock_T *mp, int *max_mlenp, int *keylenp)
   return false;
 }
 
-static bool expand_matched_map(mapblock_T *mp, int *keylenp, int *mapdepthp)
+static bool expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
 {
-  if (*keylenp < 0 || *keylenp > typebuf.tb_len) {
+  if (keylen < 0 || keylen > typebuf.tb_len) {
     return false;
   }
 
@@ -1711,13 +1711,13 @@ static bool expand_matched_map(mapblock_T *mp, int *keylenp, int *mapdepthp)
   char_u *save_m_str;
 
   // write chars to script file(s)
-  if (*keylenp > typebuf.tb_maplen) {
+  if (keylen > typebuf.tb_maplen) {
     gotchars(typebuf.tb_buf + typebuf.tb_off + typebuf.tb_maplen,
-        (size_t)(*keylenp - typebuf.tb_maplen));
+        (size_t)(keylen - typebuf.tb_maplen));
   }
 
   cmd_silent = (typebuf.tb_silent > 0);
-  del_typebuf(*keylenp, 0);             /* remove the mapped keys */
+  del_typebuf(keylen, 0);             /* remove the mapped keys */
 
   /*
    * Put the replacement string in front of mapstr.
@@ -1789,7 +1789,7 @@ static bool expand_matched_map(mapblock_T *mp, int *keylenp, int *mapdepthp)
     else if (
         STRNCMP(s, save_m_keys != NULL
           ? save_m_keys : mp->m_keys,
-          (size_t)*keylenp)
+          (size_t)keylen)
         != 0)
       noremap = REMAP_YES;
     else
@@ -2002,7 +2002,7 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
     }
   }
 
-  if (expand_matched_map(mp, keylenp, mapdepthp)) {
+  if (expand_matched_map(mp, *keylenp, mapdepthp)) {
     return 0;
   }
 
