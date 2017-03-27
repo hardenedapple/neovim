@@ -1755,6 +1755,7 @@ static int vgetorpeek(const int advance)
         const int advance_inner = advance;
         const int timedout_inner = timedout;
         int *cp = &c;
+        int *mapdepthp = &mapdepth;
         /*
          * Check for a mappable key sequence.
          * Walk through one maphash[] list until we find an
@@ -1998,14 +1999,14 @@ static int vgetorpeek(const int advance)
            * Put the replacement string in front of mapstr.
            * The depth check catches ":map x y" and ":map y x".
            */
-          if (++mapdepth >= p_mmd) {
+          if (++(*mapdepthp) >= p_mmd) {
             EMSG(_("E223: recursive mapping"));
             if (State & CMDLINE)
               redrawcmdline();
             else
               setcursor();
             flush_buffers(FALSE);
-            mapdepth = 0;                     /* for next one */
+            *mapdepthp = 0;                     /* for next one */
             continue;
           }
 
