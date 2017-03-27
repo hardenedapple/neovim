@@ -2099,6 +2099,7 @@ static int vgetorpeek(const int advance)
       }
 
       { // get a character: 3. from the user - handle <Esc> in Insert mode
+        const int advance_inner = advance;
         /*
          * special case: if we get an <ESC> in insert mode and there
          * are no more characters at once, we pretend to go out of
@@ -2110,7 +2111,7 @@ static int vgetorpeek(const int advance)
         c = 0;
         int new_wcol = curwin->w_wcol;
         int new_wrow = curwin->w_wrow;
-        if (       advance
+        if (       advance_inner
             && typebuf.tb_len == 1
             && typebuf.tb_buf[typebuf.tb_off] == ESC
             && !no_mapping
@@ -2239,7 +2240,7 @@ static int vgetorpeek(const int advance)
          * redrawing was postponed because there was something in the
          * input buffer (e.g., termresponse). */
         if (((State & INSERT) != 0 || p_lz) && (State & CMDLINE) == 0
-            && advance && must_redraw != 0 && !need_wait_return) {
+            && advance_inner && must_redraw != 0 && !need_wait_return) {
           update_screen(0);
           setcursor();           /* put cursor back where it belongs */
         }
@@ -2252,7 +2253,7 @@ static int vgetorpeek(const int advance)
         { // Using the showcmd_len, wait_tb_len, and c1 variables
           int showcmd_len = 0;
           int c1 = 0;
-          if (typebuf.tb_len > 0 && advance && !exmode_active) {
+          if (typebuf.tb_len > 0 && advance_inner && !exmode_active) {
             if (((State & (NORMAL | INSERT)) || State == LANGMAP)
                 && State != HITRETURN) {
               /* this looks nice when typing a dead character map */
@@ -2297,7 +2298,7 @@ static int vgetorpeek(const int advance)
           c = inchar(
               typebuf.tb_buf + typebuf.tb_off + typebuf.tb_len,
               typebuf.tb_buflen - typebuf.tb_off - typebuf.tb_len - 1,
-              advance ? calc_waittime(keylen) : 0,
+              advance_inner ? calc_waittime(keylen) : 0,
               typebuf.tb_change_cnt);
 
           if (showcmd_len != 0)
@@ -2314,7 +2315,7 @@ static int vgetorpeek(const int advance)
           if (c < 0)
             continue;                     /* end of input script reached */
           if (c == NUL) {                 /* no character available */
-            if (!advance) {
+            if (!advance_inner) {
               break;
             }
             if (wait_tb_len > 0) {                /* timed out */
