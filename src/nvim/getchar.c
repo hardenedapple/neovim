@@ -1645,10 +1645,10 @@ static int handle_int(int advance)
   return c;
 }
 
-// Returns 0 to continue, 1 to break, -1 to carry on in the loop.
-// If it's found a key, leaves the new value of "c" in "*cp"
+// Returns 0 to continue, -1 to carry on in the loop, otherwise, returns the
+// character that should be used.
 // Keeps track of the mapdepth in the variable pointed to by "mapdepthp".
-static int8_t look_in_typebuf(int *cp, int *mapdepthp, int *keylenp,
+static int look_in_typebuf(int *mapdepthp, int *keylenp,
     const int timedout, const int advance, const int local_State)
 {
   if (typebuf.tb_len <= 0) {
@@ -1857,7 +1857,7 @@ static int8_t look_in_typebuf(int *cp, int *mapdepthp, int *keylenp,
     // buffer right here. Otherwise, use the mapping (loop around).
     if (mp == NULL) {
       // get a character: 2. from the typeahead buffer
-      *cp = typebuf.tb_buf[typebuf.tb_off] & 255;
+      int c = typebuf.tb_buf[typebuf.tb_off] & 255;
       if (advance) {                  // remove chars from tb_buf
         cmd_silent = (typebuf.tb_silent > 0);
         if (typebuf.tb_maplen > 0) {
@@ -1870,7 +1870,7 @@ static int8_t look_in_typebuf(int *cp, int *mapdepthp, int *keylenp,
         KeyNoremap = typebuf.tb_noremap[typebuf.tb_off];
         del_typebuf(1, 0);
       }
-      return 1;
+      return c;
     } else {
       *keylenp = mp_match_len;
     }
@@ -2325,14 +2325,17 @@ static int vgetorpeek(const int advance)
       }
 
       { // Look for a key in the typebuffer
-        int8_t control_id = look_in_typebuf(&c, &mapdepth, &keylen,
+        // 'c' is only changed when we have found a key and are leaving this
+        // loop.
+        int control_id = look_in_typebuf(
+            &mapdepth, &keylen,
             timedout, advance, local_State);
         if (control_id == 0) {
           continue;
-        } else if (control_id == 1) {
+        } else if (control_id > 0) {
+          c = control_id;
           break;
         }
-        // Carry on.
       }
 
       c = 0;
@@ -2345,7 +2348,6 @@ static int vgetorpeek(const int advance)
         } else if (control_id == 1) {
           break;
         }
-        // Carry on.
       }
     }             /* for (;;) */
   }           /* if (!character from stuffbuf) */
