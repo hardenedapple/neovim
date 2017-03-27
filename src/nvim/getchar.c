@@ -1845,6 +1845,7 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
         || ((compl_cont_status & CONT_LOCAL)
           && (temp_c == Ctrl_N || temp_c == Ctrl_P)))
      ) {
+    int *max_mlenp = &max_mlen;
     int keylen = *keylenp;
     mapblock_T *mp2 = NULL;
     int nolmaplen;
@@ -1957,8 +1958,8 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
       } else
         /* No match; may have to check for
          * termcode at next character. */
-        if (max_mlen < mlen)
-          max_mlen = mlen;
+        if (*max_mlenp < mlen)
+          *max_mlenp = mlen;
     }
 
     /* If no partly match found, use the longest full
