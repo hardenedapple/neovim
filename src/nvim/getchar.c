@@ -1756,6 +1756,7 @@ static int vgetorpeek(const int advance)
         const int timedout_inner = timedout;
         int *cp = &c;
         int *mapdepthp = &mapdepth;
+        int *keylenp = &keylen;
         /*
          * Check for a mappable key sequence.
          * Walk through one maphash[] list until we find an
@@ -1857,10 +1858,10 @@ static int vgetorpeek(const int advance)
                * - Full match: mlen == keylen
                * - Partly match: mlen == typebuf.tb_len
                */
-              keylen = mp->m_keylen;
-              if (mlen == keylen
+              *keylenp = mp->m_keylen;
+              if (mlen == *keylenp
                   || (mlen == typebuf.tb_len
-                    && typebuf.tb_len < keylen)) {
+                    && typebuf.tb_len < *keylenp)) {
                 /*
                  * If only script-local mappings are
                  * allowed, check if the mapping starts
@@ -1883,17 +1884,17 @@ static int vgetorpeek(const int advance)
                 if (n >= 0)
                   continue;
 
-                if (keylen > typebuf.tb_len) {
+                if (*keylenp > typebuf.tb_len) {
                   if (!timedout_inner && !(mp_match != NULL
                         && mp_match->m_nowait)) {
                     /* break at a partly match */
-                    keylen = KEYLEN_PART_MAP;
+                    *keylenp = KEYLEN_PART_MAP;
                     break;
                   }
-                } else if (keylen > mp_match_len) {
+                } else if (*keylenp > mp_match_len) {
                   /* found a longer match */
                   mp_match = mp;
-                  mp_match_len = keylen;
+                  mp_match_len = *keylenp;
                 }
               } else
                 /* No match; may have to check for
@@ -1905,9 +1906,9 @@ static int vgetorpeek(const int advance)
 
           /* If no partly match found, use the longest full
            * match. */
-          if (keylen != KEYLEN_PART_MAP) {
+          if (*keylenp != KEYLEN_PART_MAP) {
             mp = mp_match;
-            keylen = mp_match_len;
+            *keylenp = mp_match_len;
           }
         }
 
@@ -1943,7 +1944,7 @@ static int vgetorpeek(const int advance)
           }
           /* Need more chars for partly match. */
           if (mlen == typebuf.tb_len)
-            keylen = KEYLEN_PART_KEY;
+            *keylenp = KEYLEN_PART_KEY;
           else if (max_mlen < mlen)
             /* no match, may have to check for termcode at
              * next character */
@@ -1951,10 +1952,10 @@ static int vgetorpeek(const int advance)
         }
 
         if ((mp == NULL || max_mlen >= mp_match_len)
-            && keylen != KEYLEN_PART_MAP) {
+            && *keylenp != KEYLEN_PART_MAP) {
           // No matching mapping found or found a non-matching mapping that
           // matches at least what the matching mapping matched
-          keylen = 0;
+          *keylenp = 0;
           // If there was no mapping, use the character from the typeahead
           // buffer right here. Otherwise, use the mapping (loop around).
           if (mp == NULL) {
@@ -1974,12 +1975,12 @@ static int vgetorpeek(const int advance)
             }
             break;
           } else {
-            keylen = mp_match_len;
+            *keylenp = mp_match_len;
           }
         }
 
         /* complete match */
-        if (keylen >= 0 && keylen <= typebuf.tb_len) {
+        if (*keylenp >= 0 && *keylenp <= typebuf.tb_len) {
           int save_m_expr;
           int save_m_noremap;
           int save_m_silent;
@@ -1987,13 +1988,13 @@ static int vgetorpeek(const int advance)
           char_u *save_m_str;
 
           // write chars to script file(s)
-          if (keylen > typebuf.tb_maplen) {
+          if (*keylenp > typebuf.tb_maplen) {
             gotchars(typebuf.tb_buf + typebuf.tb_off + typebuf.tb_maplen,
-                (size_t)(keylen - typebuf.tb_maplen));
+                (size_t)(*keylenp - typebuf.tb_maplen));
           }
 
           cmd_silent = (typebuf.tb_silent > 0);
-          del_typebuf(keylen, 0);             /* remove the mapped keys */
+          del_typebuf(*keylenp, 0);             /* remove the mapped keys */
 
           /*
            * Put the replacement string in front of mapstr.
@@ -2065,7 +2066,7 @@ static int vgetorpeek(const int advance)
             else if (
                 STRNCMP(s, save_m_keys != NULL
                   ? save_m_keys : mp->m_keys,
-                  (size_t)keylen)
+                  (size_t)*keylenp)
                 != 0)
               noremap = REMAP_YES;
             else
