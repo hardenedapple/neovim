@@ -2101,6 +2101,7 @@ static int vgetorpeek(const int advance)
       { // get a character: 3. from the user - handle <Esc> in Insert mode
         const int advance_inner = advance;
         int *timedoutp = &timedout;
+        int *mode_deletedp = &mode_deleted;
         /*
          * special case: if we get an <ESC> in insert mode and there
          * are no more characters at once, we pretend to go out of
@@ -2129,7 +2130,7 @@ static int vgetorpeek(const int advance)
 
           if (mode_displayed) {
             unshowmode(TRUE);
-            mode_deleted = TRUE;
+            *mode_deletedp = TRUE;
           }
           validate_cursor();
           int old_wcol = curwin->w_wcol;
