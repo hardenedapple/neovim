@@ -2100,6 +2100,7 @@ static int vgetorpeek(const int advance)
 
       { // get a character: 3. from the user - handle <Esc> in Insert mode
         const int advance_inner = advance;
+        int *timedoutp = &timedout;
         /*
          * special case: if we get an <ESC> in insert mode and there
          * are no more characters at once, we pretend to go out of
@@ -2197,7 +2198,7 @@ static int vgetorpeek(const int advance)
 
         /* buffer full, don't map */
         if (typebuf.tb_len >= typebuf.tb_maplen + MAXMAPLEN) {
-          timedout = TRUE;
+          *timedoutp = TRUE;
           continue;
         }
 
@@ -2208,7 +2209,7 @@ static int vgetorpeek(const int advance)
            * something to avoid getting stuck.  When an incomplete
            * mapping is present, behave like it timed out. */
           if (typebuf.tb_len > 0) {
-            timedout = TRUE;
+            *timedoutp = TRUE;
             continue;
           }
           /* When 'insertmode' is set, ESC just beeps in Insert
@@ -2319,7 +2320,7 @@ static int vgetorpeek(const int advance)
               break;
             }
             if (wait_tb_len > 0) {                /* timed out */
-              timedout = TRUE;
+              *timedoutp = TRUE;
               continue;
             }
           } else {          /* allow mapping for just typed characters */
