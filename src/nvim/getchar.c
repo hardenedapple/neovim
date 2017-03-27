@@ -1648,7 +1648,7 @@ static int handle_int(int advance)
 // Returns 0 to continue, -1 to carry on in the loop, otherwise, returns the
 // character that should be used.
 // Keeps track of the mapdepth in the variable pointed to by "mapdepthp".
-static int look_in_typebuf(int *mapdepthp, int *keylenp,
+static int look_in_typebuf(int *mapdepthp, int *keylenp, int *mp_match_lenp,
     const int timedout, const int advance, const int local_State)
 {
   if (typebuf.tb_len <= 0) {
@@ -1671,7 +1671,6 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp,
    */
   mapblock_T *mp = NULL;
   int max_mlen = 0;
-  int mp_match_len;
   int temp_c = typebuf.tb_buf[typebuf.tb_off];
   if (no_mapping == 0 && maphash_valid
       && (no_zero_mapping == 0 || temp_c != '0')
@@ -1712,7 +1711,7 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp,
      * match, so "aa" and "aaa" can both be mapped.
      */
     mapblock_T *mp_match = NULL;
-    mp_match_len = 0;
+    *mp_match_lenp = 0;
     for (; mp != NULL;
         mp->m_next == NULL ? (mp = mp2, mp2 = NULL) :
         (mp = mp->m_next)) {
@@ -1788,10 +1787,10 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp,
               *keylenp = KEYLEN_PART_MAP;
               break;
             }
-          } else if (*keylenp > mp_match_len) {
+          } else if (*keylenp > *mp_match_lenp) {
             /* found a longer match */
             mp_match = mp;
-            mp_match_len = *keylenp;
+            *mp_match_lenp = *keylenp;
           }
         } else
           /* No match; may have to check for
@@ -1805,7 +1804,7 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp,
      * match. */
     if (*keylenp != KEYLEN_PART_MAP) {
       mp = mp_match;
-      *keylenp = mp_match_len;
+      *keylenp = *mp_match_lenp;
     }
   }
 
@@ -1848,7 +1847,7 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp,
       max_mlen = mlen + 1;
   }
 
-  if ((mp == NULL || max_mlen >= mp_match_len)
+  if ((mp == NULL || max_mlen >= *mp_match_lenp)
       && *keylenp != KEYLEN_PART_MAP) {
     // No matching mapping found or found a non-matching mapping that
     // matches at least what the matching mapping matched
@@ -1872,7 +1871,7 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp,
       }
       return c;
     } else {
-      *keylenp = mp_match_len;
+      *keylenp = *mp_match_lenp;
     }
   }
 
@@ -2243,6 +2242,7 @@ static int vgetorpeek(const int advance)
 {
   int c;
   int mode_deleted = FALSE;             /* set when mode has been deleted */
+  int mp_match_len = 0;
 
   /*
    * This function doesn't work very well when called recursively.  This may
@@ -2328,7 +2328,7 @@ static int vgetorpeek(const int advance)
         // 'c' is only changed when we have found a key and are leaving this
         // loop.
         int control_id = look_in_typebuf(
-            &mapdepth, &keylen,
+            &mapdepth, &keylen, &mp_match_len,
             timedout, advance, local_State);
         if (control_id == 0) {
           continue;
