@@ -1647,6 +1647,12 @@ static int handle_int(int advance)
 
 // Returns `true` if have toggled the 'paste' option, and hence should continue
 // on to find the next character.
+// Only changes *keylenp if it finds the start of the bytes required to toggle
+// 'paste'. In that case *keylenp is set to KEYLEN_PART_KEY.
+// If it finds no match in the typebuffer, because the typebuffer has
+// characters that are different than required for toggling paste (i.e. not
+// because the typebuffer finishes before a match has been completed), then it
+// sets *max_mlenp to the length where they do match, plus 2.
 static bool check_togglepaste(mapblock_T *mp, int *max_mlenp, int *keylenp)
 {
   // Check for a key that can toggle the 'paste' option
