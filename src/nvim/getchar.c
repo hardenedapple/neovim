@@ -1669,7 +1669,6 @@ static int vgetorpeek(const int advance)
 {
   int c;
   int mode_deleted = FALSE;             /* set when mode has been deleted */
-  int mlen;
   int nolmaplen;
   int wait_tb_len;
 
@@ -1827,6 +1826,7 @@ static int vgetorpeek(const int advance)
               int nomap = nolmaplen;
               int c2;
               /* find the match length of this mapping */
+              int mlen = 1;
               for (mlen = 1; mlen < typebuf.tb_len; ++mlen) {
                 c2 = typebuf.tb_buf[typebuf.tb_off + mlen];
                 if (nomap > 0)
@@ -1909,6 +1909,7 @@ static int vgetorpeek(const int advance)
 
         // Check for a key that can toggle the 'paste' option
         if (mp == NULL && (State & (INSERT|NORMAL))) {
+          int mlen;
           bool match = typebuf_match_len(ui_toggle, &mlen);
           if (!match && mlen != typebuf.tb_len && *p_pt != NUL) {
             // didn't match ui_toggle_key and didn't try the whole typebuf,
