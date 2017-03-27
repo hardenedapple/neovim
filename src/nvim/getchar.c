@@ -1697,6 +1697,10 @@ static bool check_togglepaste(mapblock_T *mp, int *max_mlenp, int *keylenp)
   return false;
 }
 
+// Checks "keylen" to see if we've found a valid map in the typebuffer.
+// If so, expand it in the typebuffer, increment *mapdepthp (and check we
+// haven't exceeded the map recursion limit) and return `true`.
+// If not, return false.
 static bool expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
 {
   if (keylen < 0 || keylen > typebuf.tb_len) {
