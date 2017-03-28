@@ -2040,6 +2040,7 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
       && (bytes_read = inchar(typebuf.tb_buf + typebuf.tb_off
           + typebuf.tb_len, 3, 25L,
           typebuf.tb_change_cnt)) == 0) {
+    int *new_wcolp = &new_wcol;
     colnr_T col = 0, vcol;
     char_u      *ptr;
 
@@ -2097,7 +2098,7 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
     }
     setcursor();
     ui_flush();
-    new_wcol = curwin->w_wcol;
+    *new_wcolp = curwin->w_wcol;
     new_wrow = curwin->w_wrow;
     curwin->w_wcol = old_wcol;
     curwin->w_wrow = old_wrow;
