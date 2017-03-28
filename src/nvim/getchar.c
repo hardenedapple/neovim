@@ -2012,9 +2012,7 @@ static int look_in_typebuf(int *mapdepthp, int *keylenp,
   return -1;
 }
 
-// Returns 0 to continue, 1 to break, -1 to carry on in the loop.
-// If it's found a key, leaves the new value of "c" in "*cp"
-static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
+static int ins_esc_special_case(int *new_wcolp, int *new_wrowp, int *mode_deletedp,
     const int advance, const int keylen)
 {
   /*
@@ -2026,8 +2024,6 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
    * place does not matter.
    */
   int bytes_read = 0;
-  int new_wcol = curwin->w_wcol;
-  int new_wrow = curwin->w_wrow;
   if (       advance
       && typebuf.tb_len == 1
       && typebuf.tb_buf[typebuf.tb_off] == ESC
@@ -2040,8 +2036,6 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
       && (bytes_read = inchar(typebuf.tb_buf + typebuf.tb_off
           + typebuf.tb_len, 3, 25L,
           typebuf.tb_change_cnt)) == 0) {
-    int *new_wcolp = &new_wcol;
-    int *new_wrowp = &new_wrow;
     colnr_T col = 0, vcol;
     char_u      *ptr;
 
@@ -2104,6 +2098,19 @@ static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
     curwin->w_wcol = old_wcol;
     curwin->w_wrow = old_wrow;
   }
+
+  return bytes_read;
+}
+
+// Returns 0 to continue, 1 to break, -1 to carry on in the loop.
+// If it's found a key, leaves the new value of "c" in "*cp"
+static int8_t get_key_from_user(int *cp, int *timedoutp, int *mode_deletedp,
+    const int advance, const int keylen)
+{
+  int new_wcol = curwin->w_wcol;
+  int new_wrow = curwin->w_wrow;
+  int bytes_read = ins_esc_special_case(&new_wcol, &new_wrow, mode_deletedp,
+      advance, keylen);
   if (bytes_read < 0)
     return 0;             /* end of input script reached */
 
@@ -2377,6 +2384,8 @@ static int vgetorpeek(const int advance)
       }
 
       { // Try to get a key directly from the user.
+        // Can't have "c" as a return value as we allow 'c' of NUL (i.e. zero)
+        // here to represent no keys available.
         int8_t control_id = get_key_from_user(
             &c, &timedout, &mode_deleted,
             advance, keylen);
