@@ -2189,9 +2189,10 @@ static int get_key_from_user(int *timedoutp, int *mode_deletedp,
    * to the user with showcmd.
    */
 
-  int showcmd_len = 0;
   bool pretty_partial_match = false;
+  int showcmd_len = 0;
   if (typebuf.tb_len > 0 && advance && !exmode_active) {
+    bool *pretty_partialp = &pretty_partial_match;
     if (((State & (NORMAL | INSERT)) || State == LANGMAP)
         && State != HITRETURN) {
       /* this looks nice when typing a dead character map */
@@ -2201,7 +2202,7 @@ static int get_key_from_user(int *timedoutp, int *mode_deletedp,
         edit_putchar(typebuf.tb_buf[typebuf.tb_off
             + typebuf.tb_len - 1], FALSE);
         setcursor();               /* put cursor back where it belongs */
-        pretty_partial_match = true;
+        *pretty_partialp = true;
       }
       /* need to use the col and row from above here */
       int old_wcol = curwin->w_wcol;
@@ -2225,7 +2226,7 @@ static int get_key_from_user(int *timedoutp, int *mode_deletedp,
           + typebuf.tb_len - 1) == 1) {
       putcmdline(typebuf.tb_buf[typebuf.tb_off
           + typebuf.tb_len - 1], FALSE);
-      pretty_partial_match = true;
+      *pretty_partialp = true;
     }
   }
 
