@@ -1665,25 +1665,19 @@ static int handle_int(const int advance)
 /// When "no_mapping" is zero, checks for mappings in the current mode.
 /// Only returns one byte (of a multi-byte character).
 /// K_SPECIAL and CSI may be escaped, need to get two more bytes then.
-static int vgetorpeek(int advance)
+static int vgetorpeek(const int advance)
 {
-  int c, c1;
+  int c;
   int keylen;
-  char_u      *s;
-  mapblock_T  *mp;
-  mapblock_T  *mp2;
-  mapblock_T  *mp_match;
   int mp_match_len = 0;
   int timedout = FALSE;                     /* waited for more than 1 second
                                                 for mapping to complete */
   int mapdepth = 0;                 /* check for recursive mapping */
   int mode_deleted = FALSE;             /* set when mode has been deleted */
-  int local_State;
   int mlen;
   int max_mlen;
   int i;
   int new_wcol, new_wrow;
-  int n;
   int nolmaplen;
   int old_wcol, old_wrow;
   int wait_tb_len;
@@ -1704,7 +1698,7 @@ static int vgetorpeek(int advance)
       )
     return NUL;
 
-  local_State = get_real_state();
+  const int local_State = get_real_state();
 
   ++vgetc_busy;
 
@@ -1772,33 +1766,34 @@ static int vgetorpeek(int advance)
            * - waiting for a char with --more--
            * - in Ctrl-X mode, and we get a valid char for that mode
            */
-          mp = NULL;
+          mapblock_T *mp = NULL;
           max_mlen = 0;
-          c1 = typebuf.tb_buf[typebuf.tb_off];
+          int temp_c = typebuf.tb_buf[typebuf.tb_off];
           if (no_mapping == 0 && maphash_valid
-              && (no_zero_mapping == 0 || c1 != '0')
+              && (no_zero_mapping == 0 || temp_c != '0')
               && (typebuf.tb_maplen == 0
                   || (p_remap
                       && (typebuf.tb_noremap[typebuf.tb_off]
                           & (RM_NONE|RM_ABBR)) == 0))
               && !(p_paste && (State & (INSERT + CMDLINE)))
-              && !(State == HITRETURN && (c1 == CAR || c1 == ' '))
+              && !(State == HITRETURN && (temp_c == CAR || temp_c == ' '))
               && State != ASKMORE
               && State != CONFIRM
-              && !((ctrl_x_mode != 0 && vim_is_ctrl_x_key(c1))
+              && !((ctrl_x_mode != 0 && vim_is_ctrl_x_key(temp_c))
                    || ((compl_cont_status & CONT_LOCAL)
-                       && (c1 == Ctrl_N || c1 == Ctrl_P)))
+                       && (temp_c == Ctrl_N || temp_c == Ctrl_P)))
               ) {
-            if (c1 == K_SPECIAL) {
+            mapblock_T *mp2 = NULL;
+            if (temp_c == K_SPECIAL) {
               nolmaplen = 2;
             } else {
-              LANGMAP_ADJUST(c1, (State & (CMDLINE | INSERT)) == 0
+              LANGMAP_ADJUST(temp_c, (State & (CMDLINE | INSERT)) == 0
                              && get_real_state() != SELECTMODE);
               nolmaplen = 0;
             }
             /* First try buffer-local mappings. */
-            mp = curbuf->b_maphash[MAP_HASH(local_State, c1)];
-            mp2 = maphash[MAP_HASH(local_State, c1)];
+            mp = curbuf->b_maphash[MAP_HASH(local_State, temp_c)];
+            mp2 = maphash[MAP_HASH(local_State, temp_c)];
             if (mp == NULL) {
               /* There are no buffer-local mappings. */
               mp = mp2;
@@ -1811,7 +1806,7 @@ static int vgetorpeek(int advance)
              * A full match is only accepted if there is no partly
              * match, so "aa" and "aaa" can both be mapped.
              */
-            mp_match = NULL;
+            mapblock_T *mp_match = NULL;
             mp_match_len = 0;
             for (; mp != NULL;
                  mp->m_next == NULL ? (mp = mp2, mp2 = NULL) :
@@ -1821,7 +1816,7 @@ static int vgetorpeek(int advance)
                * matches and it is for the current state.
                * Skip ":lmap" mappings if keys were mapped.
                */
-              if (mp->m_keys[0] == c1
+              if (mp->m_keys[0] == temp_c
                   && (mp->m_mode & local_State)
                   && ((mp->m_mode & LANGMAP) == 0
                       || typebuf.tb_maplen == 0)) {
@@ -1847,7 +1842,7 @@ static int vgetorpeek(int advance)
                 char_u *p1 = mp->m_keys;
                 char_u *p2 = (char_u *)mb_unescape((const char **)&p1);
 
-                if (has_mbyte && p2 != NULL && MB_BYTE2LEN(c1) > MB_PTR2LEN(p2))
+                if (has_mbyte && p2 != NULL && MB_BYTE2LEN(temp_c) > MB_PTR2LEN(p2))
                   mlen = 0;
                 /*
                  * Check an entry whether it matches.
@@ -1863,7 +1858,7 @@ static int vgetorpeek(int advance)
                    * allowed, check if the mapping starts
                    * with K_SNR.
                    */
-                  s = typebuf.tb_noremap + typebuf.tb_off;
+                  char_u *s = typebuf.tb_noremap + typebuf.tb_off;
                   if (*s == RM_SCRIPT
                       && (mp->m_keys[0] != K_SPECIAL
                           || mp->m_keys[1] != KS_EXTRA
@@ -1874,6 +1869,7 @@ static int vgetorpeek(int advance)
                    * If one of the typed keys cannot be
                    * remapped, skip the entry.
                    */
+                  int n;
                   for (n = mlen; --n >= 0; )
                     if (*s++ & (RM_NONE|RM_ABBR))
                       break;
@@ -2034,6 +2030,7 @@ static int vgetorpeek(int advance)
              * expression.  Also save and restore the command line
              * for "normal :".
              */
+            char_u *s;
             if (mp->m_expr) {
               int save_vgetc_busy = vgetc_busy;
 
@@ -2176,7 +2173,7 @@ static int vgetorpeek(int advance)
 
         // Allow mapping for just typed characters. When we get here c
         // is the number of extra bytes and typebuf.tb_len is 1.
-        for (n = 1; n <= c; n++) {
+        for (int n = 1; n <= c; n++) {
           typebuf.tb_noremap[typebuf.tb_off + n] = RM_YES;
         }
         typebuf.tb_len += c;
@@ -2237,7 +2234,7 @@ static int vgetorpeek(int advance)
          * to the user with showcmd.
          */
         i = 0;
-        c1 = 0;
+        int c1 = 0;
         if (typebuf.tb_len > 0 && advance && !exmode_active) {
           if (((State & (NORMAL | INSERT)) || State == LANGMAP)
               && State != HITRETURN) {
