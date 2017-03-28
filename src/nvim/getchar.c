@@ -2149,8 +2149,19 @@ static int vgetc_doshowcmd(bool *pretty_partialp,
   return showcmd_len;
 }
 
-// Returns 0 to continue, 1 to break, -1 to carry on in the loop.
-// If it's found a key, leaves the new value of "c" in "*cp"
+// Returns -1 to carry on in the loop, otherwise returns the character to use
+// (this character may be NUL).
+// In the general case this function doesn't return a character, it usually
+// puts characters into the typebuffer so that look_in_typebuf() can parse
+// them.
+// The special cases are:
+//    Using the :normal command
+//      As this inserts the entire :normal argument into the typebuffer at
+//      once, when we get here the :normal command has gone through all of its
+//      arguments. Hence, we return a character that ensures we"re out of any
+//      new calls to edit().
+//    Have no more characters, and "advance" is false.
+//      We return NUL here to signify that.
 static int get_key_from_user(int *timedoutp, int *mode_deletedp,
     const int advance, const int keylen)
 {
