@@ -1681,7 +1681,8 @@ static void expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
   char_u *save_m_str;
 
   // write chars to script file(s)
-  if (keylen > typebuf.tb_maplen) {
+  // Note :lmap mappings are written *after* being applied. #5658
+  if (keylen > typebuf.tb_maplen && (mp->m_mode & LANGMAP) == 0) {
     gotchars(typebuf.tb_buf + typebuf.tb_off + typebuf.tb_maplen,
              (size_t)(keylen - typebuf.tb_maplen));
   }
@@ -1742,6 +1743,12 @@ static void expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
   // If m_noremap is set, don't remap the whole 'to' part.
   if (s != NULL) {
     int noremap;
+
+    // If this is a LANGMAP mapping, then we didn't record the keys at the
+    // start of the function, and have to record them now.
+    if (keylen > typebuf.tb_maplen && (mp->m_mode & LANGMAP) != 0) {
+      gotchars(s, STRLEN(s));
+    }
 
     if (save_m_noremap != REMAP_YES) {
       noremap = save_m_noremap;
