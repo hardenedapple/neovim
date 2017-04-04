@@ -1693,8 +1693,9 @@ static void expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
   char_u *save_m_keys;
   char_u *save_m_str;
 
-  // write chars to script file(s)
-  if (keylen > typebuf.tb_maplen) {
+  // Write chars to script file(s)
+  // Note :lmap mappings are written *after* being applied. #5658
+  if (keylen > typebuf.tb_maplen && (mp->m_mode & LANGMAP) == 0) {
     // We take characters from the mapping to ensure that if the mapping was
     // triggered from keys that had been LANGMAP_ADJUST()ed, we record the
     // translation instead of the original keys typed.
@@ -1760,6 +1761,12 @@ static void expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
   // If m_noremap is set, don't remap the whole 'to' part.
   if (s != NULL) {
     int noremap;
+
+    // If this is a LANGMAP mapping, then we didn't record the keys
+    // at the start of the function and have to record them now.
+    if (keylen > typebuf.tb_maplen && (mp->m_mode & LANGMAP) != 0) {
+      gotchars(s, STRLEN(s));
+    }
 
     if (save_m_noremap != REMAP_YES) {
       noremap = save_m_noremap;
@@ -1921,7 +1928,10 @@ static find_map_ret find_typed_map(const bool timedout, const int local_State)
           keylen = KEYLEN_PART_MAP;
           break;
         }
-      } else if (keylen > mp_match_len) {
+      } else if (keylen > mp_match_len
+                || (keylen == mp_match_len
+                    && (mp_match->m_mode & LANGMAP) == 0
+                    && (mp->m_mode & LANGMAP) != 0)) {
         // found a longer match
         mp_match = mp;
         mp_match_len = keylen;
