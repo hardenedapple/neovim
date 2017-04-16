@@ -1638,6 +1638,262 @@ static int handle_interrupt(const int advance)
   return c;
 }
 
+// XXX Assumption:
+//    No map puts a partial multibyte character into the typebuffer.
+//    expand_matched_map() needs to know what bytes are typed and which bytes
+//    are not so it can store the correct ones in a macro/scriptfile.
+//    find_typed_map() can calculate this by recording when the sum of
+//    .bytes_used returned from this function exceeds typebuf.tb_maplen.
+//    If it ever were the case that a mapping puts a partial multibyte
+//    character into the typebuffer, then this function could return a
+//    .bytes_used that goes from below typebuf.tb_maplen to above it.
+//    In this case, find_typed_map() would not be able to tell how many of the
+//    used bytes were mapped and how many were typed, and it would hence not be
+//    able to give expand_matched_map() an accurate number of bytes to store in
+//    the macro/scriptfile.
+// Information needed from this function:
+//    How many bytes from the typebuffer were used.
+//    How many bytes are in the next multibyte character.
+//    What bytes are in the buffer (i.e. the buffer)
+// Gets the next multibyte character from the typebuffer.
+// Converts the character using LANGMAP_ADJUST() before returning it.
+// Leaves all bytes for this character in `buf` which must have space for
+// MAX((MB_MAXBYTES + 1), 3) bytes.
+// Returns a struct containing the number of bytes in this character and the
+// number of bytes used from the typebuffer.
+// If there are not enough characters in the typebuffer to return a complete
+// character returns the bytes in the typebuffer, and doesn't convert them.
+// If there is a K_SPECIAL key here, we return the entire K_SPECIAL sequence
+// without LANGMAP_ADJUST() applied unless there aren't enough bytes in the
+// typebuffer to complete it.
+// If there aren't enough bytes in the typebuffer to complete the K_SPECIAL
+// encoded key, return what bytes there are, unmapped, and with
+// .bytes_used == .bytes_returned == (typebuf.tb_len - offset).
+static typebuf_char_ret get_typebuf_char(char_u *buf, size_t offset)
+{
+  // XXX It's a little pointless that we have a .full_char member and return
+  // all bytes that were left in the typebuffer.
+  // Everywhere this is called, if the .full_char member is "false", the caller
+  // doesn't use the buffer, or the .bytes_used / .bytes_returned members.
+  typebuf_char_ret no_chars = {
+    .bytes_used = 0, .bytes_returned = 0, .full_char = false
+  };
+  if (offset >= (size_t)typebuf.tb_len) {
+    return no_chars;
+  }
+
+  size_t off = (size_t)typebuf.tb_off + offset;
+  size_t i = 0;
+  buf[0] = typebuf.tb_buf[off + i];
+  i += 1;
+  char_u ch = buf[0];
+  size_t n;
+
+  // Don't apply LANGMAP to K_SPECIAL keys.
+  // Currently, vgetorpeek() takes raw characters from the typebuffer, and
+  // vgetc() converts any K_SPECIAL sequences to their appropriate integer
+  // value before going up into vim proper.
+  // Hence mappings must be set up to handle the raw byte sequences, and not
+  // the actual characters (especially when working with modified characters
+  // where the modification is marked in vim proper with the "mod_mask"
+  // variable, and in vgetorpeek() with a K_SPECIAL ... ... sequence).
+  //
+  // Hence, any modification to K_SPECIAL sequences will mess up looking for
+  // maps in vgetorpeek().
+  // This conclusion is corroborated by the fact that vgetorpeek() makes effort
+  // to not apply LANGMAP_ADJUST() on K_SPECIAL sequences when searching for
+  // maps.
+  if (ch == K_SPECIAL) {
+    size_t j = 1;
+    for (; j < 3 && j + 1 + offset <= (size_t)typebuf.tb_len; j++) {
+      buf[j] = typebuf.tb_buf[off + j];
+    }
+    // wlog assume offset == 0
+    // If one byte in the typebuffer, then typebuf.tb_len == 1
+    // j + 1 == 2, do nothing, j == 1
+    // If two bytes in the typebuffer, typebuf.tb_len == 2
+    // After one iteration j + 1 == 3, j == 2, break
+    // If three bytes in the typebuffer, typebuf.tb_len == 3
+    // After two iterations j + 1 == 4, j == 3 break either way.
+    // If more, then after two iterations j == 3 break.
+    typebuf_char_ret k_special = {
+      .bytes_used = j,
+      .bytes_returned = j,
+      .full_char = (j == 3)
+    };
+    return k_special;
+  }
+
+  // Need to know .bytes_used, .bytes_returned
+  size_t bytes_used = i;
+  if ((n = (size_t)MB_BYTE2LEN(ch)) > 1) {
+    for (i = 1, bytes_used = 1;
+         i < n && bytes_used + 1 + offset <= (size_t)typebuf.tb_len;
+         i++, bytes_used++) {
+      buf[i] = typebuf.tb_buf[off + bytes_used];
+      if (buf[i] == K_SPECIAL) {
+        // Must be a K_SPECIAL - KS_SPECIAL - KE_FILLER sequence,
+        // which represents a K_SPECIAL (0x80),
+        // or a CSI - KS_EXTRA - KE_CSI sequence, which represents
+        // a CSI (0x9B),
+        // of a K_SPECIAL - KS_EXTRA - KE_CSI, which is CSI too.
+        // If it should be CSI, then replace with CSI, otherwise leave as
+        // K_SPECIAL.
+        // TODO XXX Check for mapping with these special characters.
+        //     This is behaving slightly different to the original
+        //     implementation because it converts these keys, whereas the
+        //     original implementation would check the unconverted K_SPECIAL
+        //     sequence in mappings.
+        // TODO XXX We also need to make sure that the case of an unfinished
+        //     K_SPECIAL sequence is distinguished and handled properly.
+        if (bytes_used + 2 + offset > (size_t)typebuf.tb_len) { break; }
+        bytes_used += 1;
+        ch = typebuf.tb_buf[off + bytes_used];
+        if (bytes_used + 2 + offset >= (size_t)typebuf.tb_len) { break; }
+        bytes_used += 1;
+        if (typebuf.tb_buf[off + bytes_used] == (int)KE_CSI && ch == KS_EXTRA) {
+          buf[i] = CSI;
+        }
+      }
+    }
+  }
+
+  if (i != n) {
+    // Don't apply LANGMAP_ADJUST() to this as it's an unfinished character and
+    // we hence can't know what we should adjust it too.
+    // Instead we return a non-full_char value to the caller.
+    // The caller is hence responsible for ignoring this value.
+    // If it wants, it could check the value of bytes_used and bytes_returned,
+    // but as yet no caller does so.
+    typebuf_char_ret unfinished_multibyte_char = {
+      .bytes_used = bytes_used,
+      .bytes_returned = i,
+      .full_char = false
+    };
+    return unfinished_multibyte_char;
+  }
+
+  int c = mb_ptr2char(buf);
+  LANGMAP_ADJUST(c, (State & (CMDLINE | INSERT)) == 0
+                    && get_real_state() != SELECTMODE);
+  size_t numbytes = (size_t)mb_char2bytes(c, buf);
+  // TODO Encode the CSI and K_SPECIAL bytes back into the buffer.
+  //      OR
+  //      Make mappings decode K_SPECIAL in their lhs.
+  //        (may even be instead of decode K_SPECIAL stuff, not encode it).
+  typebuf_char_ret converted = {
+    .bytes_used = bytes_used,
+    .bytes_returned = numbytes,
+    .full_char = true
+  };
+  return converted;
+}
+
+// TODO
+//  Use get_typebuf_char() to read bytes from the typebuffer.
+//  Check them against the bytes in mp->m_keys
+//  If find a match, leave the number of bytes read from the typebuffer in
+//  .bytes_used, the number of bytes matched in mp->m_keys in .bytes_matched,
+//  and the number of bytes used from the typebuffer that were from a mapping
+//  in .mapped_bytes.
+//  If don't find a match, mark .no_match as false.
+//
+// TODO
+//  This (for now) should fail if
+//    a) the number of bytes in the typebuffer that were from a mapping is
+//    reached in the middle of a multibyte character.
+static match_len_t match_len(typebuf_char_ret first_char,
+                                  char_u *orig_buf, mapblock_T *mp)
+{
+  // NOTE, must be called when checking the start of the typebuffer.
+  // (we start with an assumed ret.bytes_used = 0).
+  char_u buf[MB_MAXBYTES + 1];
+
+  match_len_t ret = {
+    .bytes_used = 0,
+    .bytes_matched = 0,
+    .mapped_bytes = 0,
+    .no_match = false,
+  };
+  match_len_t no_matchret = {
+    .bytes_used = 0,
+    .bytes_matched = 0,
+    .mapped_bytes = 0,
+    .no_match = true
+  };
+
+  // Copy the first multibyte character into a local buffer.
+  // This is a little wasteful in terms of execution time because we could just
+  // check the bytes in place.
+  // It's done in order to avoid complicating the code.
+  for (size_t i = 0; i < first_char.bytes_returned; i++) {
+    buf[i] = orig_buf[i];
+  }
+
+  typebuf_char_ret curchar = first_char;
+  while (true) {
+    int remaining_maplen = typebuf.tb_maplen - (int)ret.bytes_used;
+    size_t i = 0;
+
+    if (curchar.full_char == false) {
+      // Can't do anything with a partial multibyte character, as we can't be
+      // certain that these bytes would still be around after applying
+      // LANGMAP_ADJUST() to the full character.
+      // Return the accumulator so far.
+      return ret;
+    }
+
+    for (i = 0; i < curchar.bytes_returned
+                // Cast i to integer in this comparison because we have to test
+                // for the possibilitiy that
+                // mp->m_keylen - (int)ret.bytes_matched
+                // is negative.
+                && (int)i < mp->m_keylen - (int)ret.bytes_matched;
+         i++) {
+      // Just a precautionary measure against overflow.
+      assert(i + ret.bytes_matched < (size_t)mp->m_keylen);
+      if (mp->m_keys[i + ret.bytes_matched] != buf[i]) {
+        return no_matchret;
+      }
+    }
+
+    // If we didn't return from the above for(;;) loop, then we either reached
+    // the end of the multibyte character, or reached the end of the lhs of the
+    // :map.
+    // If we reached the end of the lhs of the :map without reaching the end of
+    // the multibyte character, then somehow the map finishes with part of a
+    // multibyte character.
+    // This isn't allowed, assert it's not the case.
+    assert (i == curchar.bytes_returned);
+    // Assert no previous mapping inserted a partial multibyte character.
+    // That's just a strange thing, and would break a lot of assumptions in my
+    // code.
+    assert (remaining_maplen <= 0 || remaining_maplen >= (int)curchar.bytes_used);
+
+    if (remaining_maplen >= (int)curchar.bytes_used) {
+      ret.mapped_bytes += curchar.bytes_returned;
+    }
+    ret.bytes_used += curchar.bytes_used;
+    ret.bytes_matched += curchar.bytes_returned;
+
+    // If we've found a complete map, set .no_match to false to indicate so,
+    // and return the accumulator.
+    if (ret.bytes_matched == (size_t)mp->m_keylen) {
+      return ret;
+    }
+    // If we've finished the typebuffer, return the accumulator.
+    if (ret.bytes_used == (size_t)typebuf.tb_len) {
+      return ret;
+    }
+    curchar = get_typebuf_char(buf, ret.bytes_used);
+    // Just to ensure that assumptions in this loop make sense.
+    assert(curchar.bytes_used != 0 && curchar.bytes_returned != 0);
+  }
+  // Should never reach here.
+  abort();
+  return ret;
+}
+
 // Returns `1` if have toggled the 'paste' option, and hence should continue on
 // to find the next character.
 // Returns `-1` if it finds the start of the bytes required to toggle 'paste'
@@ -1684,7 +1940,8 @@ static int8_t check_togglepaste(void)
 // Store typed keys in the typebuffer, increment *mapdepthp and check we
 // haven't reached the map recursion limit, then expand the map given with "mp"
 // and replace the keys it was mapped from in the typebuffer.
-static void expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
+static void expand_matched_map(mapblock_T *mp, const size_t bytes_used,
+                               const size_t mapped_match, int *mapdepthp)
 {
   // complete match
   int save_m_expr;
@@ -1695,18 +1952,19 @@ static void expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
 
   // Write chars to script file(s)
   // Note :lmap mappings are written *after* being applied. #5658
-  if (keylen > typebuf.tb_maplen && (mp->m_mode & LANGMAP) == 0) {
+  if (bytes_used > (size_t)typebuf.tb_maplen && (mp->m_mode & LANGMAP) == 0) {
     // We take characters from the mapping to ensure that if the mapping was
     // triggered from keys that had been LANGMAP_ADJUST()ed, we record the
     // translation instead of the original keys typed.
     // This fits the mental model of "langmap" simply being a translation
     // between your keyboard and vim proper.
-    gotchars(mp->m_keys + typebuf.tb_maplen,
-             (size_t)(keylen - typebuf.tb_maplen));
+    assert((size_t)mp->m_keylen >= mapped_match);
+    gotchars(mp->m_keys + mapped_match,
+             (size_t)mp->m_keylen - mapped_match);
   }
 
   cmd_silent = (typebuf.tb_silent > 0);
-  del_typebuf(keylen, 0);             // remove the mapped keys
+  del_typebuf((int)bytes_used, 0);             // remove the mapped keys
 
   // Put the replacement string in front of mapstr.
   // The depth check catches ":map x y" and ":map y x".
@@ -1762,9 +2020,9 @@ static void expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
   if (s != NULL) {
     int noremap;
 
-    // If this is a LANGMAP mapping, then we didn't record the keys
-    // at the start of the function and have to record them now.
-    if (keylen > typebuf.tb_maplen && (mp->m_mode & LANGMAP) != 0) {
+    // If this is a LANGMAP mapping, then we didn't record the keys at the
+    // start of the function and have to record them now.
+    if (bytes_used > (size_t)typebuf.tb_maplen && (mp->m_mode & LANGMAP) != 0) {
       gotchars(s, STRLEN(s));
     }
 
@@ -1772,7 +2030,7 @@ static void expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
       noremap = save_m_noremap;
     } else if (STRNCMP(s,
                        save_m_keys != NULL ? save_m_keys : mp->m_keys,
-                       (size_t)keylen) != 0) {
+                       (size_t)mp->m_keylen) != 0) {
       noremap = REMAP_YES;
     } else {
       noremap = REMAP_SKIP;
@@ -1787,20 +2045,29 @@ static void expand_matched_map(mapblock_T *mp, const int keylen, int *mapdepthp)
 }
 
 // Look in the typebuffer for any mappings.
-// If a mapping is found, then return that mapblock_T *, and leave the length
-// of the mapblock_T m_keylen member in *keylenp.
-// If no mapping is found return NULL.
+// If a mapping is found, then return that mapblock_T *, how many bytes of the
+// typebuffer that mapping used, and how many of those bytes were mapped in a
+// find_map_ret structure.
+// If no mapping is found return NULL as the mapblock_T * in the return
+// structure.
 //    If this is because the typebuffer contains characters that don't match
-//    any mapping, then set *keylenp as 0.
+//    any mapping, then set .part_map to false.
 //    If it is because the typebuffer contains the start of a mapping, but not
-//    an entire one, set *keylenp to KEYLEN_PART_MAP.
+//    an entire one, then set .part_map to true.
 static find_map_ret find_typed_map(const bool timedout, const int local_State)
 {
-  int temp_c = typebuf.tb_buf[typebuf.tb_off];
-  find_map_ret no_map = { .mp = NULL, .part_map = false };
+  // Stores each multibyte character in turn.
+  char_u buf[MB_MAXBYTES + 1];
+  typebuf_char_ret next_char = get_typebuf_char(buf, 0);
+  find_map_ret no_map = {
+    .mp = NULL,
+    .bytes_used = 0,
+    .mapped_match = 0,
+    .part_map = false
+  };
 
-  if (no_mapping != 0 || !maphash_valid
-      || (no_zero_mapping != 0 && temp_c == '0')) {
+  // Short-curcuit checks that don't rely on the character just read.
+  if (no_mapping != 0 || !maphash_valid) {
     return no_map;
   }
 
@@ -1815,11 +2082,38 @@ static find_map_ret find_typed_map(const bool timedout, const int local_State)
     return no_map;
   }
 
-  if (State == HITRETURN && (temp_c == CAR || temp_c == ' ')) {
+  if (State == ASKMORE || State == CONFIRM) {
     return no_map;
   }
 
-  if (State == ASKMORE || State == CONFIRM) {
+  // If there wasn't a full multibyte character in the typebuffer, we can't
+  // check against the bytes that were returned. This is  because the
+  // LANGMAP_ADJUST()ments are only applied on a full multibyte character.
+  // Rather than return "no_map", which would indicate to the calling function
+  // that it should return the first byte in the typebuffer, we return
+  // "incomplete_map" (abstractly .. an incomplete map of length 0) to indicate
+  // to the calling function that we need more characters.
+  find_map_ret incomplete_map = {
+    .mp = NULL,
+    .bytes_used = 0,
+    .mapped_match = 0,
+    .part_map = true
+  };
+
+  if (next_char.full_char == false) {
+    return incomplete_map;
+  }
+
+  // Checks that rely on the bytes read in.
+  // Here we can rely on get_typebuf_char() having applied the
+  // LANGMAP_ADJUST()ments that are necessary so that we're working with the
+  // correct bytes.
+  int temp_c = (int)buf[0];
+  if (no_zero_mapping != 0 && temp_c == '0') {
+    return no_map;
+  }
+
+  if (State == HITRETURN && (temp_c == CAR || temp_c == ' ')) {
     return no_map;
   }
 
@@ -1834,14 +2128,6 @@ static find_map_ret find_typed_map(const bool timedout, const int local_State)
 
   mapblock_T *mp = NULL;
   mapblock_T *mp2 = NULL;
-  int nolmaplen;
-  if (temp_c == K_SPECIAL) {
-    nolmaplen = 2;
-  } else {
-    LANGMAP_ADJUST(temp_c, (State & (CMDLINE | INSERT)) == 0
-                   && local_State != SELECTMODE);
-    nolmaplen = 0;
-  }
   // First try buffer-local mappings.
   mp = curbuf->b_maphash[MAP_HASH(local_State, temp_c)];
   mp2 = maphash[MAP_HASH(local_State, temp_c)];
@@ -1853,11 +2139,11 @@ static find_map_ret find_typed_map(const bool timedout, const int local_State)
   // Loop until a partly matching mapping is found or all (local) mappings have
   // been checked.
   // The longest full match is remembered in "mp_match".
-  // A full match is only accepted if there is no partly match, so "aa" and
-  // "aaa" can both be mapped.
   mapblock_T *mp_match = NULL;
   int mp_match_len = 0;
-  int keylen = 0;
+  size_t mp_bytes_used = 0;
+  size_t mp_mapped_match = 0;
+  bool part_map = false;
   for (; mp != NULL;
        mp->m_next == NULL ? (mp = mp2, mp2 = NULL) : (mp = mp->m_next)) {
     // Only consider an entry if the first character matches and it is for the
@@ -1869,51 +2155,53 @@ static find_map_ret find_typed_map(const bool timedout, const int local_State)
             && typebuf.tb_maplen != 0)) {
       continue;
     }
-    int nomap = nolmaplen;
-    int c2;
-    // find the match length of this mapping
-    int mlen = 1;
-    for (mlen = 1; mlen < typebuf.tb_len; mlen++) {
-      c2 = typebuf.tb_buf[typebuf.tb_off + mlen];
-      if (nomap > 0) {
-        nomap--;
-      } else if (c2 == K_SPECIAL) {
-        nomap = 2;
-      } else {
-        LANGMAP_ADJUST(c2, true);
-      }
-      if (mp->m_keys[mlen] != c2) {
-        break;
+
+    match_len_t val = match_len(next_char, buf, mp);
+    if (val.no_match) {
+      continue;
+    }
+
+    // Check for having given match_len() an incomplete multibyte
+    // character.
+    // This should never happen, because we've checked for an incomplete
+    // multibyte character above (and already returned incomplete_map if it's
+    // the case), but just to make sure.
+    assert (val.bytes_used != 0 || val.no_match);
+
+    { // TODO Should be able to remove this ...
+      // I already check that the first byte(s) of a multibyte char are not
+      // mapped by returning from this function
+      // if next_char.fufll_char == false with "incomplete_map".
+
+      // Don't allow mapping the first byte(s) of a multi-byte char.
+      // Happens when mapping <M-a> and then changing 'encoding'.
+      // Beware that 0x80 is escaped.
+      char_u *p1 = mp->m_keys;
+      char_u *p2 = mb_unescape(&p1);
+
+      if (p2 != NULL && MB_BYTE2LEN(temp_c) > MB_PTR2LEN(p2)) {
+        // Just to alert me if something that "can't happen" is happening.
+        abort();
       }
     }
 
-    // Don't allow mapping the first byte(s) of a multi-byte char.
-    // Happens when mapping <M-a> and then changing 'encoding'.
-    // Beware that 0x80 is escaped.
-    char_u *p1 = mp->m_keys;
-    char_u *p2 = mb_unescape(&p1);
-
-    if (p2 != NULL && MB_BYTE2LEN(temp_c) > MB_PTR2LEN(p2)) {
-      mlen = 0;
+    // If only script-local mappings are allowed, check if the mapping starts
+    // with K_SNR.
+    // NOTE don't have to worry about using the noremap buffer directly and
+    // the m_keys value (which is the typebuf *after* LANGMAP_ADJUST())
+    // because we are checking a K_SPECIAL sequence, which would have been
+    // faithfully transcribed by get_typebuf_char().
+    char_u *s = typebuf.tb_noremap + typebuf.tb_off;
+    if (*s == RM_SCRIPT
+        && (mp->m_keys[0] != K_SPECIAL
+          || mp->m_keys[1] != KS_EXTRA
+          || mp->m_keys[2] != (int)KE_SNR)) {
+      continue;
     }
-    // Check an entry whether it matches.
-    // - Full match: mlen == keylen
-    // - Partly match: mlen == typebuf.tb_len
-    keylen = mp->m_keylen;
-    if (mlen == keylen
-        || (mlen == typebuf.tb_len && typebuf.tb_len < keylen)) {
-      // If only script-local mappings are allowed, check if the mapping starts
-      // with K_SNR.
-      char_u *s = typebuf.tb_noremap + typebuf.tb_off;
-      if (*s == RM_SCRIPT
-          && (mp->m_keys[0] != K_SPECIAL
-              || mp->m_keys[1] != KS_EXTRA
-              || mp->m_keys[2] != (int)KE_SNR)) {
-        continue;
-      }
-      // If one of the typed keys cannot be remapped, skip the entry.
-      int n;
-      for (n = mlen; n > 0; n--) {
+
+    { // If one of the typed keys cannot be remapped, skip the entry.
+      size_t n;
+      for (n = val.bytes_used; n > 0; n--) {
         if (*s++ & (RM_NONE|RM_ABBR)) {
           break;
         }
@@ -1921,31 +2209,38 @@ static find_map_ret find_typed_map(const bool timedout, const int local_State)
       if (n > 0) {
         continue;
       }
+    }
 
-      if (keylen > typebuf.tb_len) {
-        if (!timedout && !(mp_match != NULL && mp_match->m_nowait)) {
-          // break at a partly match
-          keylen = KEYLEN_PART_MAP;
-          break;
-        }
-      } else if (keylen > mp_match_len
-                || (keylen == mp_match_len
-                    && (mp_match->m_mode & LANGMAP) == 0
-                    && (mp->m_mode & LANGMAP) != 0)) {
-        // found a longer match
-        mp_match = mp;
-        mp_match_len = keylen;
+    if (val.bytes_matched < (size_t)mp->m_keylen) {
+      if (!timedout && !(mp_match != NULL && mp_match->m_nowait)) {
+        // break at a partial match
+        part_map = true;
+        break;
       }
+    } else if (mp->m_keylen > mp_match_len
+               || (mp->m_keylen == mp_match_len
+                   && (mp_match->m_mode & LANGMAP) == 0
+                   && (mp->m_mode & LANGMAP) != 0)) {
+      // found a longer match
+      mp_match = mp;
+      mp_match_len = mp->m_keylen;
+      mp_bytes_used = val.bytes_used;
+      mp_mapped_match = val.mapped_bytes;
     }
   }
 
   // if mp_match == NULL, then this is the same as the no_map struct;
-  find_map_ret complete_or_no_map = { .mp = mp_match, .part_map = false };
-  find_map_ret incomplete_map = { .mp = NULL, .part_map = true };
-  if (keylen != KEYLEN_PART_MAP) {
-    return complete_or_no_map;
+  find_map_ret complete_or_no_map = {
+    .mp = mp_match,
+    .bytes_used = mp_bytes_used,
+    .mapped_match = mp_mapped_match,
+    .part_map = false
+  };
+
+  if (part_map) { 
+    return incomplete_map;
   }
-  return incomplete_map;
+  return complete_or_no_map;
 }
 
 // Returns 0 to continue (i.e. check in the typebuffer again),
@@ -1966,6 +2261,27 @@ static typebuf_ret look_in_typebuf(int *mapdepthp,
     return ret;
   }
 
+  // TODO It's a little unclear what's happening here with the
+  // LANGMAP_ADJUST()ed characters at the moment.
+  // I intend to make it clearer, but for the moment (partially to help me get
+  // things straight in my mind) I'm writing down what's happening here.
+  // TODO find_typed_map() *only* works with LANGMAP_ADJUST()ed characters.
+  //      the `keylen` value it returns is the length of the matched map (if it
+  //      exists) measured as characters in the typebuffer.
+  // DONE check_togglepaste() completely ignores LANGMAP_ADJUST()ments (as it
+  //      did before my changes).
+  // DONE Returning a single character ignores LANGMAP_ADJUST()ments.
+  //      The LANGMAP_ADJUST()ment in vgetc() is applied instead, which takes
+  //      into account multibyte characters.
+  // DONE expand_matched_map() uses the map keys to store what keys were typed,
+  //      in order to account for the LANGMAP_ADJUST()ments.
+  //      It is given how many bytes of the typebuffer were used, so it can
+  //      remove them from the typebuffer.
+  //      It reads how many bytes there are in the map from mp and is given how
+  //      many bytes of that map were gotten from typed keys.
+  //      This is so it can use the map rhs for storing what keys were typed
+  //      into any macros/scriptfile.
+
   // Check for a mappable key sequence.
   // Walk through one maphash[] list until we find an entry that matches.
   // Don't look for mappings if:
@@ -1978,13 +2294,21 @@ static typebuf_ret look_in_typebuf(int *mapdepthp,
   // - waiting for a char with --more--
   // - in Ctrl-X mode, and we get a valid char for that mode
   find_map_ret val = find_typed_map(timedout, local_State);
+  // TODO find_typed_map() should tell the loop if we haven't yet finished
+  // reading an entire key (e.g. unfinished multibyte character or unfinished
+  // K_SPECIAL sequence).
+  // This would be signalled with a map_type member instead of a boolean
+  // part_map member.
+  // If this is the case we would want to return from this function
+  // immediately, with mapt indicating the situation.
+  // This would only be done once we have modified find_typed_map() to handle
+  // K_SPECIAL sequences *after* modification instead of before.
 
   // If a map was found, then we don't want to check for pastetoggle, and we
   // aren't going to return a single key hence we return here.
   if (val.mp != NULL) {
-    int keylen = val.mp->m_keylen;
-    assert(keylen >= 0 && keylen <= typebuf.tb_len);
-    expand_matched_map(val.mp, keylen, mapdepthp);
+    assert(val.bytes_used > 0 && val.bytes_used <= (size_t)typebuf.tb_len);
+    expand_matched_map(val.mp, val.bytes_used, val.mapped_match, mapdepthp);
     ret = (typebuf_ret) { .action = EXPANDED_MAPPING, .mapt = NO_MAP, .c = 0 };
     return ret;
   }
@@ -1997,7 +2321,6 @@ static typebuf_ret look_in_typebuf(int *mapdepthp,
   } else {
     mapt = NO_MAP;
   }
-
 
   { // Check for 'pastetoggle' and <Paste> key.
     int8_t i = check_togglepaste();
@@ -2060,6 +2383,9 @@ static int ins_esc_special_case(
     int *new_wcolp, int *new_wrowp, bool *mode_deletedp,
     const int advance, const map_type mapt)
 {
+  // XXX  This doesn't have to account for LANGMAP_ADJUST()ed characters
+  // because it's only relevant in INSERT mode, and LANGMAP_ADJUST() isn't
+  // applied in INSERT mode.
   int bytes_read = 0;
   if (       advance
       && typebuf.tb_len == 1
@@ -2142,6 +2468,8 @@ static int vgetc_doshowcmd(bool *pretty_partialp,
                            const int advance, const int new_wcol,
                            const int new_wrow)
 {
+  // TODO This doesn't use the LANGMAP_ADJUST()ed characters.
+  //      This isn't a regression, but it would be nice to fix it.
   if (typebuf.tb_len <= 0 || !advance || exmode_active) {
     return 0;
   }
@@ -4409,6 +4737,10 @@ static char_u * translate_mapping (
   return (char_u *)(ga.ga_data);
 }
 
+// TODO At the moment, check_togglepaste() doesn't apply LANGMAP_ADJUST() in
+// normal mode, whether it should or not is a question worth debating.
+// If it should, then this is where we should change to implement that
+// functionality.
 static bool typebuf_match_len(const uint8_t *str, int *mlen)
 {
   int i;

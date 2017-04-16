@@ -33,8 +33,23 @@ typedef struct {
 
 typedef struct {
   mapblock_T *mp;
+  size_t bytes_used;
+  size_t mapped_match;
   bool part_map;
 } find_map_ret;
+
+typedef struct {
+  size_t bytes_used;
+  size_t bytes_returned;
+  bool full_char;
+} typebuf_char_ret;
+
+typedef struct {
+  size_t bytes_used;
+  size_t bytes_matched;
+  size_t mapped_bytes;
+  bool no_match;
+} match_len_t;
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "getchar.h.generated.h"
 #endif
