@@ -1832,7 +1832,7 @@ void ex_loadkeymap(exarg_T *eap)
     vim_snprintf((char *)buf, sizeof(buf), "<buffer> %s %s",
                  ((kmap_T *)curbuf->b_kmap_ga.ga_data)[i].from,
                  ((kmap_T *)curbuf->b_kmap_ga.ga_data)[i].to);
-    (void)do_map(2, buf, LANGMAP, FALSE);
+    (void)do_map(0, buf, LANGMAP, FALSE);
   }
 
   p_cpo = save_cpo;
