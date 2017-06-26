@@ -2556,10 +2556,11 @@ do_map (
   abbr_table = &first_abbr;
 
   /* For ":noremap" don't remap, otherwise do remap. */
-  if (maptype == 2)
+  if (maptype == 2 && mode != LANGMAP) {
     noremap = REMAP_NONE;
-  else
+  } else {
     noremap = REMAP_YES;
+  }
 
   /* Accept <buffer>, <nowait>, <silent>, <expr> <script> and <unique> in
    * any order. */
